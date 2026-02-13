@@ -1,6 +1,17 @@
 import streamlit as st
 import pandas as pd
-from neo_api_client import NeoAPI
+import sys
+
+# Try to import NeoAPI
+try:
+    from neo_api_client import NeoAPI
+except ImportError:
+    st.error("Neo API Client not installed!")
+    st.warning("Please install the dependencies first.")
+    st.code("pip install -r requirements.txt", language="bash")
+    st.stop()
+    sys.exit(1)
+
 from logic import load_scrip_master, filter_data_for_indices, get_expiry_list, get_strikes, get_token
 
 # Page configuration
