@@ -126,7 +126,7 @@ if 'client' in st.session_state:
                 st.markdown("---")
                 b_col1, b_col2, b_col3, b_col4 = st.columns(4)
 
-                def place_dashboard_order(transaction_type, option_type, strike, token, quantity, stop_loss):
+                def place_dashboard_order(transaction_type, option_type, strike, token, quantity, stop_loss, ltp_ref):
                     if not token:
                         st.error("Invalid Instrument Token")
                         return
@@ -134,19 +134,9 @@ if 'client' in st.session_state:
                     st.toast(f"Placing {transaction_type} order for {symbol} {expiry} {strike} {option_type}...")
 
                     product_type = "MIS"
-                    sl_params = {}
-
-                    if stop_loss > 0:
-                        # Attempt Bracket Order (BO)
-                        product_type = "BO"
-                        sl_params['stop_loss_value'] = str(stop_loss)
 
                     try:
                         # Get Trading Symbol
-                        # Use logic.py helpers or direct filtering on df_indices
-                        # Since get_token logic is specific, let's filter similarly to get trading symbol
-                        # logic.py doesn't have get_trading_symbol, so let's do it here or add it to logic.py
-                        # For now, inline is okay for this one lookup since we have the filtered df
                         subset = df_indices[
                             (df_indices['symbol'] == symbol) &
                             (df_indices['expiry'] == expiry) &
@@ -159,7 +149,7 @@ if 'client' in st.session_state:
 
                         trading_sym = subset['trading_symbol'].values[0]
 
-                        # Construct order arguments
+                        # 1. Place Entry Order (Market)
                         order_args = {
                             "exchange_segment": "nse_fo",
                             "product": product_type,
@@ -172,18 +162,60 @@ if 'client' in st.session_state:
                             "amo": "NO"
                         }
 
-                        if product_type == "BO":
-                            order_args.update(sl_params)
-
-                        # Call API
+                        # Call API for Entry
                         resp = client.place_order(**order_args)
 
                         if resp and 'nOrdNo' in resp: # Check for success key
-                             st.success(f"Order Placed ({product_type})! ID: {resp['nOrdNo']}")
+                             st.success(f"Entry Order Placed! ID: {resp['nOrdNo']}")
+
+                             # 2. Place Stop Loss Order (SL-M) if needed
+                             if stop_loss > 0:
+                                 try:
+                                     # Convert LTP to float
+                                     current_price = float(ltp_ref)
+
+                                     # Calculate Trigger Price
+                                     if transaction_type == "BUY":
+                                         # Long Entry -> SL is Sell below Entry
+                                         trigger_price = current_price - stop_loss
+                                         sl_transaction_type = "S"
+                                     else:
+                                         # Short Entry -> SL is Buy above Entry
+                                         trigger_price = current_price + stop_loss
+                                         sl_transaction_type = "B"
+
+                                     # Round trigger price to valid tick size (usually 0.05)
+                                     trigger_price = round(trigger_price * 20) / 20
+
+                                     if trigger_price <= 0:
+                                         st.warning(f"Calculated SL Trigger Price ({trigger_price}) is invalid. SL Order skipped.")
+                                     else:
+                                         sl_args = {
+                                            "exchange_segment": "nse_fo",
+                                            "product": product_type,
+                                            "price": "0", # SL-M means Market after Trigger
+                                            "order_type": "SL-M",
+                                            "quantity": str(quantity),
+                                            "validity": "DAY",
+                                            "trading_symbol": trading_sym,
+                                            "transaction_type": sl_transaction_type,
+                                            "trigger_price": str(trigger_price),
+                                            "amo": "NO"
+                                         }
+
+                                         sl_resp = client.place_order(**sl_args)
+                                         if sl_resp and 'nOrdNo' in sl_resp:
+                                             st.info(f"Stop Loss Order Placed! ID: {sl_resp['nOrdNo']} at Trigger: {trigger_price}")
+                                         else:
+                                             st.warning(f"Stop Loss Order Failed: {sl_resp.get('Error', sl_resp)}")
+
+                                 except ValueError:
+                                     st.warning("Invalid LTP for Stop Loss calculation. SL Order skipped.")
+                                 except Exception as sl_ex:
+                                     st.warning(f"Exception placing SL Order: {sl_ex}")
+
                         elif resp and 'Error' in resp:
                              st.error(f"Order Failed: {resp['Error']}")
-                             if product_type == "BO":
-                                 st.warning("Bracket Order failed. Try setting Stop Loss to 0 for a standard MIS order.")
                         else:
                              st.info(f"Order Response: {resp}")
 
@@ -192,16 +224,16 @@ if 'client' in st.session_state:
 
                 with b_col1:
                     if st.button("BUY CALL", use_container_width=True, type="primary"):
-                        place_dashboard_order("BUY", "CE", ce_strike, ce_token, quantity, stop_loss)
+                        place_dashboard_order("BUY", "CE", ce_strike, ce_token, quantity, stop_loss, ce_ltp)
                 with b_col2:
                     if st.button("SELL CALL", use_container_width=True):
-                        place_dashboard_order("SELL", "CE", ce_strike, ce_token, quantity, stop_loss)
+                        place_dashboard_order("SELL", "CE", ce_strike, ce_token, quantity, stop_loss, ce_ltp)
                 with b_col3:
                     if st.button("BUY PUT", use_container_width=True, type="primary"):
-                        place_dashboard_order("BUY", "PE", pe_strike, pe_token, quantity, stop_loss)
+                        place_dashboard_order("BUY", "PE", pe_strike, pe_token, quantity, stop_loss, pe_ltp)
                 with b_col4:
                     if st.button("SELL PUT", use_container_width=True):
-                        place_dashboard_order("SELL", "PE", pe_strike, pe_token, quantity, stop_loss)
+                        place_dashboard_order("SELL", "PE", pe_strike, pe_token, quantity, stop_loss, pe_ltp)
 
         except Exception as e:
             st.error(f"Error processing data: {e}")
