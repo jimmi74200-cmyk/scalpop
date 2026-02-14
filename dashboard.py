@@ -89,11 +89,29 @@ if 'client' in st.session_state:
         del st.session_state['client']
         st.rerun()
 
-    # Fetch Scrip Master
+    # Fetch Scrip Master (F&O and Cash for Spot Indices)
     df_master = None
     try:
-        with st.spinner("Loading Scrip Master..."):
-            df_master = load_scrip_master(client, "nse_fo")
+        with st.spinner("Loading Scrip Master (F&O + Cash)..."):
+            # Load F&O
+            df_fo = load_scrip_master(client, "nse_fo")
+
+            # Load Cash (for Spot Indices)
+            # Use a separate try-except block for CM to avoid blocking FO if CM fails
+            df_cm = None
+            try:
+                df_cm = load_scrip_master(client, "nse_cm")
+            except Exception as cm_e:
+                st.warning(f"Could not load Cash Market data (Spot Indices might be unavailable): {cm_e}")
+
+            # Combine
+            if df_fo is not None and df_cm is not None:
+                df_master = pd.concat([df_fo, df_cm], ignore_index=True)
+            elif df_fo is not None:
+                df_master = df_fo
+            elif df_cm is not None:
+                df_master = df_cm
+
     except Exception as e:
         st.error(f"Error loading Scrip Master: {e}")
 
