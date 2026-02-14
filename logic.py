@@ -248,12 +248,20 @@ def get_token_and_segment(df, symbol, expiry, strike, option_type):
     ]
 
     if not subset.empty:
-        token = str(subset.iloc[0]['instrument_token'])
+        token = str(subset.iloc[0]['instrument_token']).strip()
         # Try to get segment if available
         segment = "nse_fo" # default
         if 'exchange_segment' in subset.columns:
-            seg_val = str(subset.iloc[0]['exchange_segment']).lower()
-            if seg_val:
+            seg_val = str(subset.iloc[0]['exchange_segment']).lower().strip()
+            # Validate segment against known allowed values
+            allowed_segments = ['nse_cm', 'nse_fo', 'bse_cm', 'bse_fo', 'cde_fo', 'mcx_fo']
+            if seg_val in allowed_segments:
                 segment = seg_val
+            elif "nse" in seg_val and "fo" in seg_val:
+                segment = "nse_fo"
+            elif "bse" in seg_val and "fo" in seg_val:
+                segment = "bse_fo"
+            # Add more heuristics if needed, otherwise fallback to nse_fo
+
         return token, segment
     return None, None
