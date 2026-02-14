@@ -141,14 +141,33 @@ if 'client' in st.session_state:
                     if st.button("Refresh Strikes"):
                         # Logic to find Future Price and auto-select strikes
                         try:
-                            # 1. Find Future Token for this symbol/expiry
+                            # 1. Find Future Token for this symbol
+                            # First try exact expiry
                             fut_subset = df_indices[
                                 (df_indices['symbol'] == symbol) &
                                 (df_indices['expiry'] == expiry) &
                                 (df_indices['instrument_type'].astype(str).str.contains("FUT", case=False, na=False))
                             ]
 
+                            # If no future for exact expiry (e.g. weekly option), find nearest future
+                            if fut_subset.empty:
+                                all_futs = df_indices[
+                                    (df_indices['symbol'] == symbol) &
+                                    (df_indices['instrument_type'].astype(str).str.contains("FUT", case=False, na=False))
+                                ].copy()
+
+                                if not all_futs.empty:
+                                    # Parse expiries to sort
+                                    all_futs['expiry_dt'] = pd.to_datetime(all_futs['expiry'], format='%d%b%Y', errors='coerce')
+                                    # Filter for futures expiring on or after the selected option expiry
+                                    curr_opt_expiry = pd.to_datetime(expiry, format='%d%b%Y', errors='coerce')
+                                    if pd.notna(curr_opt_expiry):
+                                        future_futs = all_futs[all_futs['expiry_dt'] >= curr_opt_expiry].sort_values('expiry_dt')
+                                        if not future_futs.empty:
+                                            fut_subset = future_futs.head(1)
+
                             ref_price = None
+
                             if not fut_subset.empty:
                                 fut_token = str(fut_subset.iloc[0]['instrument_token']).strip()
                                 fut_seg = str(fut_subset.iloc[0]['exchange_segment']).strip().lower()
