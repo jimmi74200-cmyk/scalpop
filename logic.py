@@ -1,5 +1,12 @@
 import pandas as pd
 import streamlit as st
+import requests
+import io
+import warnings
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+
+# Suppress only the single warning from urllib3 needed.
+warnings.simplefilter('ignore', InsecureRequestWarning)
 
 @st.cache_data(ttl=3600)
 def load_scrip_master(_client, segment="nse_fo"):
@@ -23,9 +30,16 @@ def load_scrip_master(_client, segment="nse_fo"):
         if not isinstance(url, str):
              raise Exception(f"Unexpected response format: {url}")
 
-        # Load CSV
-        # Use on_bad_lines='skip' to be robust
-        df = pd.read_csv(url, on_bad_lines='skip')
+        # Load CSV using requests with verify=False to bypass SSL errors
+        try:
+            response = requests.get(url, verify=False, timeout=30)
+            response.raise_for_status()
+            csv_content = response.text
+        except requests.exceptions.RequestException as req_err:
+             raise Exception(f"Failed to fetch CSV: {req_err}")
+
+        # Load into Pandas
+        df = pd.read_csv(io.StringIO(csv_content), on_bad_lines='skip')
 
         # Strip whitespace from column names just in case
         df.columns = df.columns.str.strip()
