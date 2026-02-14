@@ -22,7 +22,7 @@ with st.sidebar:
     st.header("Authentication")
     consumer_key = st.text_input("Consumer Key", type="password", help="From Kotak Neo Trade API settings")
     mobile_number = st.text_input("Mobile Number", help="Registered Mobile Number with Country Code (e.g., +91...)")
-    password = st.text_input("Password", type="password", help="Your account password")
+    # password = st.text_input("Password", type="password", help="Your account password") # Not used in TOTP flow
     ucc = st.text_input("UCC (User Client Code)")
     mpin = st.text_input("MPIN", type="password")
     totp = st.text_input("Current TOTP", help="Time-based One-Time Password from your authenticator app")
@@ -34,14 +34,24 @@ with st.sidebar:
             try:
                 # Initialize Client
                 client = NeoAPI(consumer_key=consumer_key, environment='prod')
-                client.totp_login(mobile_number=mobile_number, ucc=ucc, totp=totp)
-                client.totp_validate(mpin=mpin)
-                st.session_state['client'] = client
-                st.session_state['ucc'] = ucc
-                st.success("Logged in successfully!")
-                st.rerun()
+
+                # Step 1: Login with Mobile/UCC/TOTP
+                login_resp = client.totp_login(mobile_number=mobile_number, ucc=ucc, totp=totp)
+                if not login_resp or 'data' not in login_resp or 'token' not in login_resp['data']:
+                    st.error(f"Login Failed: {login_resp.get('error', login_resp)}")
+                else:
+                    # Step 2: Validate MPIN
+                    validate_resp = client.totp_validate(mpin=mpin)
+                    if not validate_resp or 'data' not in validate_resp or 'token' not in validate_resp['data']:
+                        st.error(f"MPIN Validation Failed: {validate_resp.get('error', validate_resp)}")
+                    else:
+                        # Success
+                        st.session_state['client'] = client
+                        st.session_state['ucc'] = ucc
+                        st.success("Logged in successfully!")
+                        st.rerun()
             except Exception as e:
-                st.error(f"Login failed: {e}")
+                st.error(f"Login process failed: {e}")
 
 # Main Content
 st.title("Kotak Neo Quick Options Dashboard")

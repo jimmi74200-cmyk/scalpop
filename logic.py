@@ -12,8 +12,13 @@ def load_scrip_master(_client, segment="nse_fo"):
         # The client.scrip_master returns a URL string for the CSV
         url = _client.scrip_master(exchange_segment=segment)
 
-        if isinstance(url, dict) and "Error" in url:
-            raise Exception(url.get("Error"))
+        if isinstance(url, dict):
+            if "Error" in url:
+                raise Exception(url.get("Error"))
+            if "Error Message" in url:
+                raise Exception(url.get("Error Message"))
+            if "message" in url:
+                raise Exception(url.get("message"))
 
         if not isinstance(url, str):
              raise Exception(f"Unexpected response format: {url}")
