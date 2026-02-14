@@ -133,6 +133,26 @@ if 'client' in st.session_state:
 
                 col3, col4, col5 = st.columns(3)
 
+                def extract_ltp(response):
+                    """Helper to extract LTP from various response formats"""
+                    if not response:
+                        return "No Resp"
+
+                    # Determine source data container
+                    data = response.get('data', response) # Fallback to response itself if no 'data' key
+
+                    if isinstance(data, list) and len(data) > 0:
+                        return data[0].get('ltp', 'N/A')
+                    elif isinstance(data, dict):
+                        if 'ltp' in data:
+                            return data.get('ltp', 'N/A')
+                        else:
+                            # Iterate through values to find the data dict (handles mixed keys like 'stat', '0')
+                            for val in data.values():
+                                if isinstance(val, dict) and 'ltp' in val:
+                                    return val.get('ltp', 'N/A')
+                    return "N/A"
+
                 with col3:
                     ce_strike = st.selectbox("CE Strike", strikes, index=len(strikes)//2 if strikes else 0, format_func=lambda x: f"{float(x):g}")
                     # Get LTP for CE
@@ -141,38 +161,13 @@ if 'client' in st.session_state:
 
                     if ce_token:
                         try:
-                            # Use dynamic segment or fallback
                             seg = ce_seg if ce_seg else "nse_fo"
                             q = client.quotes(instrument_tokens=[{"instrument_token": ce_token, "exchange_segment": seg}], quote_type="ltp")
-
-                            if q and 'data' in q:
-                                # Data might be a list or dict depending on API version
-                                data = q['data']
-                                if isinstance(data, list) and len(data) > 0:
-                                    ce_ltp = data[0].get('ltp', 'N/A')
-                                elif isinstance(data, dict):
-                                    # Check if it's a direct dict or keyed dict (e.g., {'0': {...}})
-                                    if 'ltp' in data:
-                                        ce_ltp = data.get('ltp', 'N/A')
-                                    elif len(data) > 0:
-                                        # Take the first value if keys are numeric indices
-                                        first_val = next(iter(data.values()))
-                                        if isinstance(first_val, dict):
-                                            ce_ltp = first_val.get('ltp', 'N/A')
-                                        else:
-                                            ce_ltp = "No LTP"
-                                    else:
-                                        ce_ltp = "No Data"
-                                else:
-                                    ce_ltp = "No Data"
-                            else:
-                                ce_ltp = "N/A"
+                            ce_ltp = extract_ltp(q)
                         except Exception as e:
                             ce_ltp = "Err"
-                            # Auto-populate debug tool on error
                             st.session_state['debug_token'] = ce_token
                             st.session_state['debug_seg'] = ce_seg if ce_seg else "nse_fo"
-
                             if st.checkbox("Show CE Error", key="ce_err"):
                                 st.write(f"Token: {ce_token}, Seg: {ce_seg}")
                                 st.write(e)
@@ -188,29 +183,9 @@ if 'client' in st.session_state:
 
                     if pe_token:
                         try:
-                            # Use dynamic segment or fallback
                             seg = pe_seg if pe_seg else "nse_fo"
                             q = client.quotes(instrument_tokens=[{"instrument_token": pe_token, "exchange_segment": seg}], quote_type="ltp")
-
-                            if q and 'data' in q:
-                                data = q['data']
-                                if isinstance(data, list) and len(data) > 0:
-                                    pe_ltp = data[0].get('ltp', 'N/A')
-                                elif isinstance(data, dict):
-                                    if 'ltp' in data:
-                                        pe_ltp = data.get('ltp', 'N/A')
-                                    elif len(data) > 0:
-                                        first_val = next(iter(data.values()))
-                                        if isinstance(first_val, dict):
-                                            pe_ltp = first_val.get('ltp', 'N/A')
-                                        else:
-                                            pe_ltp = "No LTP"
-                                    else:
-                                        pe_ltp = "No Data"
-                                else:
-                                    pe_ltp = "No Data"
-                            else:
-                                pe_ltp = "N/A"
+                            pe_ltp = extract_ltp(q)
                         except Exception as e:
                             pe_ltp = "Err"
                             if st.checkbox("Show PE Error", key="pe_err"):
