@@ -141,30 +141,40 @@ if 'client' in st.session_state:
                     if st.button("Refresh Strikes"):
                         # Logic to find Future Price and auto-select strikes
                         try:
-                            # 1. Find Future Token for this symbol
-                            # First try exact expiry
-                            fut_subset = df_indices[
-                                (df_indices['symbol'] == symbol) &
-                                (df_indices['expiry'] == expiry) &
+                            # 1. Find Future Token
+                            # Strategy:
+                            # A. Exact Match: Symbol + Expiry + FUT
+                            # B. Symbol Match: Symbol + Nearest Expiry + FUT
+                            # C. Root Symbol Match: Root(Symbol) + Nearest Expiry + FUT (e.g. NIFTY vs NIFTY 50)
+
+                            root_symbol = symbol.split()[0] # e.g. "NIFTY" from "NIFTY 50" or "NIFTY"
+
+                            # Filter for ANY Future matching the root symbol
+                            all_futs = df_indices[
+                                (df_indices['symbol'].str.contains(root_symbol, case=False, na=False)) &
                                 (df_indices['instrument_type'].astype(str).str.contains("FUT", case=False, na=False))
-                            ]
+                            ].copy()
 
-                            # If no future for exact expiry (e.g. weekly option), find nearest future
-                            if fut_subset.empty:
-                                all_futs = df_indices[
-                                    (df_indices['symbol'] == symbol) &
-                                    (df_indices['instrument_type'].astype(str).str.contains("FUT", case=False, na=False))
-                                ].copy()
+                            fut_subset = pd.DataFrame()
 
-                                if not all_futs.empty:
-                                    # Parse expiries to sort
+                            if not all_futs.empty:
+                                # Try exact expiry first
+                                exact_futs = all_futs[all_futs['expiry'] == expiry]
+                                if not exact_futs.empty:
+                                    fut_subset = exact_futs.head(1)
+                                else:
+                                    # Find nearest future expiring >= option expiry
                                     all_futs['expiry_dt'] = pd.to_datetime(all_futs['expiry'], format='%d%b%Y', errors='coerce')
-                                    # Filter for futures expiring on or after the selected option expiry
                                     curr_opt_expiry = pd.to_datetime(expiry, format='%d%b%Y', errors='coerce')
+
                                     if pd.notna(curr_opt_expiry):
                                         future_futs = all_futs[all_futs['expiry_dt'] >= curr_opt_expiry].sort_values('expiry_dt')
                                         if not future_futs.empty:
                                             fut_subset = future_futs.head(1)
+
+                            # Debug info if failed
+                            if fut_subset.empty:
+                                st.warning(f"No Future found for {symbol} (Root: {root_symbol}). Available Futures: {all_futs['symbol'].unique() if not all_futs.empty else 'None'}")
 
                             ref_price = None
 
