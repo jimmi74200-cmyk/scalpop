@@ -48,10 +48,13 @@ def load_scrip_master(_client, segment="nse_fo"):
     except Exception as e:
         raise e
 
-def filter_data_for_indices(df, symbols=["NIFTY", "BANKNIFTY", "FINNIFTY"]):
+def filter_data_for_indices(df, symbols=None):
     """
     Filters the DataFrame for specific indices and formats columns.
     """
+    if symbols is None:
+        symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY", "NIFTY 50", "NIFTY BANK", "NIFTYFINSERVICE"]
+
     # Mapping for Kotak CSV usually:
     # pSymbol -> Symbol
     # pExpiryDate -> Expiry
@@ -87,7 +90,19 @@ def filter_data_for_indices(df, symbols=["NIFTY", "BANKNIFTY", "FINNIFTY"]):
 
     # Filter for symbols if 'symbol' column exists
     if 'symbol' in df.columns:
-        df = df[df['symbol'].isin(symbols)]
+        # Normalize symbol column (strip whitespace, uppercase)
+        df['symbol'] = df['symbol'].astype(str).str.strip().str.upper()
+
+        # Exact match filter
+        df_filtered = df[df['symbol'].isin(symbols)]
+
+        # If no exact match found, try fuzzy match (contains)
+        if df_filtered.empty:
+            pattern = '|'.join([s for s in symbols if " " not in s]) # simple pattern for single words
+            if pattern:
+                 df_filtered = df[df['symbol'].str.contains(pattern, na=False)]
+
+        return df_filtered
 
     return df
 
