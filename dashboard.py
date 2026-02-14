@@ -139,23 +139,28 @@ if 'client' in st.session_state:
                         return "No Resp"
 
                     # Recursive search function
-                    def find_key(obj, key):
+                    def find_key(obj, target_key):
                         if isinstance(obj, dict):
-                            if key in obj:
-                                return obj[key]
+                            # Case-insensitive check for the key in current dict
                             for k, v in obj.items():
-                                result = find_key(v, key)
+                                if str(k).strip().lower() == target_key.lower():
+                                    return v
+
+                            # Recursive step
+                            for v in obj.values():
+                                result = find_key(v, target_key)
                                 if result is not None:
                                     return result
                         elif isinstance(obj, list):
                             for item in obj:
-                                result = find_key(item, key)
+                                result = find_key(item, target_key)
                                 if result is not None:
                                     return result
                         return None
 
-                    # Search for 'ltp', 'last_price', 'last_traded_price', 'close'
-                    keys_to_check = ['ltp', 'LTP', 'last_price', 'lastPrice', 'last_traded_price', 'close', 'lp']
+                    # Search for 'ltp' (will match ltp, LTP, Ltp, etc. due to logic above)
+                    # Also check synonyms just in case
+                    keys_to_check = ['ltp', 'last_price', 'last_traded_price', 'close', 'lp']
                     for k in keys_to_check:
                         val = find_key(response, k)
                         if val is not None:
