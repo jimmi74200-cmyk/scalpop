@@ -219,11 +219,20 @@ if 'client' in st.session_state:
                             # Debug info if still failed
                             if fut_subset.empty:
                                 st.warning(f"No Future or Index found for {symbol} (Root: {root_symbol}).")
-                                if not all_futs.empty:
-                                    st.write("Future Candidates:", all_futs[['symbol', 'expiry', 'instrument_type']].head())
+                                # Extended Debugging
+                                col_matches = [c for c in df_indices.columns if 'sym' in c.lower()]
+                                st.write("Root Symbol:", root_symbol)
+                                st.write("Available Instrument Types:", df_indices['instrument_type'].unique())
+
+                                # Show any rows partially matching root symbol that are NOT options
+                                partials = df_indices[
+                                    (df_indices['symbol'].str.contains(root_symbol, case=False, na=False)) &
+                                    (~df_indices['instrument_type'].astype(str).str.contains("OPT", case=False, na=False))
+                                ]
+                                if not partials.empty:
+                                    st.write("Potential Candidates (Non-Options):", partials[['symbol', 'instrument_type', 'exchange_segment']].head(10))
                                 else:
-                                    st.write("Debug: Types available:", df_indices['instrument_type'].unique())
-                                    st.write("Debug: Segments available:", df_indices['exchange_segment'].unique() if 'exchange_segment' in df_indices.columns else "N/A")
+                                    st.write("No non-option candidates found matching root.")
 
                             ref_price = None
 
