@@ -150,8 +150,19 @@ if 'client' in st.session_state:
                                 data = q['data']
                                 if isinstance(data, list) and len(data) > 0:
                                     ce_ltp = data[0].get('ltp', 'N/A')
-                                elif isinstance(data, dict): # Handle dict response
-                                    ce_ltp = data.get('ltp', 'N/A')
+                                elif isinstance(data, dict):
+                                    # Check if it's a direct dict or keyed dict (e.g., {'0': {...}})
+                                    if 'ltp' in data:
+                                        ce_ltp = data.get('ltp', 'N/A')
+                                    elif len(data) > 0:
+                                        # Take the first value if keys are numeric indices
+                                        first_val = next(iter(data.values()))
+                                        if isinstance(first_val, dict):
+                                            ce_ltp = first_val.get('ltp', 'N/A')
+                                        else:
+                                            ce_ltp = "No LTP"
+                                    else:
+                                        ce_ltp = "No Data"
                                 else:
                                     ce_ltp = "No Data"
                             else:
@@ -186,7 +197,16 @@ if 'client' in st.session_state:
                                 if isinstance(data, list) and len(data) > 0:
                                     pe_ltp = data[0].get('ltp', 'N/A')
                                 elif isinstance(data, dict):
-                                    pe_ltp = data.get('ltp', 'N/A')
+                                    if 'ltp' in data:
+                                        pe_ltp = data.get('ltp', 'N/A')
+                                    elif len(data) > 0:
+                                        first_val = next(iter(data.values()))
+                                        if isinstance(first_val, dict):
+                                            pe_ltp = first_val.get('ltp', 'N/A')
+                                        else:
+                                            pe_ltp = "No LTP"
+                                    else:
+                                        pe_ltp = "No Data"
                                 else:
                                     pe_ltp = "No Data"
                             else:
