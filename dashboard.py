@@ -154,12 +154,14 @@ if 'client' in st.session_state:
                                     return result
                         return None
 
-                    # Search for 'ltp' or 'last_price'
-                    ltp = find_key(response, 'ltp')
-                    if ltp is None:
-                        ltp = find_key(response, 'LTP') # Case sensitive check
+                    # Search for 'ltp', 'last_price', 'last_traded_price', 'close'
+                    keys_to_check = ['ltp', 'LTP', 'last_price', 'lastPrice', 'last_traded_price', 'close', 'lp']
+                    for k in keys_to_check:
+                        val = find_key(response, k)
+                        if val is not None:
+                            return val
 
-                    return ltp if ltp is not None else "N/A"
+                    return "N/A"
 
                 with col3:
                     ce_strike = st.selectbox("CE Strike", strikes, index=len(strikes)//2 if strikes else 0, format_func=lambda x: f"{float(x):g}")
@@ -172,6 +174,11 @@ if 'client' in st.session_state:
                             seg = ce_seg if ce_seg else "nse_fo"
                             q = client.quotes(instrument_tokens=[{"instrument_token": ce_token, "exchange_segment": seg}], quote_type="ltp")
                             ce_ltp = extract_ltp(q)
+
+                            # Always allow viewing raw response
+                            with st.expander("Raw CE Response"):
+                                st.write(q)
+
                         except Exception as e:
                             ce_ltp = "Err"
                             st.session_state['debug_token'] = ce_token
@@ -179,8 +186,6 @@ if 'client' in st.session_state:
                             if st.checkbox("Show CE Error", key="ce_err"):
                                 st.write(f"Token: {ce_token}, Seg: {ce_seg}")
                                 st.write(e)
-                                try: st.write("Raw Resp:", q)
-                                except: pass
                     st.metric("CE LTP", ce_ltp)
 
                 with col4:
@@ -194,13 +199,16 @@ if 'client' in st.session_state:
                             seg = pe_seg if pe_seg else "nse_fo"
                             q = client.quotes(instrument_tokens=[{"instrument_token": pe_token, "exchange_segment": seg}], quote_type="ltp")
                             pe_ltp = extract_ltp(q)
+
+                            # Always allow viewing raw response
+                            with st.expander("Raw PE Response"):
+                                st.write(q)
+
                         except Exception as e:
                             pe_ltp = "Err"
                             if st.checkbox("Show PE Error", key="pe_err"):
                                 st.write(f"Token: {pe_token}, Seg: {pe_seg}")
                                 st.write(e)
-                                try: st.write("Raw Resp:", q)
-                                except: pass
                     st.metric("PE LTP", pe_ltp)
 
                 with col5:
