@@ -20,6 +20,23 @@ st.set_page_config(page_title="Kotak Neo Quick Dashboard", layout="wide")
 # Sidebar for Authentication
 with st.sidebar:
     st.header("Authentication")
+
+    # Test Quote Debug Tool
+    if st.checkbox("Show Quote Tester"):
+        st.subheader("Quote Tester")
+        t_token = st.text_input("Instrument Token")
+        t_seg = st.text_input("Exchange Segment", value="nse_fo")
+        if st.button("Get Quote"):
+            if 'client' in st.session_state:
+                try:
+                    res = st.session_state['client'].quotes(instrument_tokens=[{"instrument_token": t_token, "exchange_segment": t_seg}], quote_type="ltp")
+                    st.write(res)
+                except Exception as e:
+                    st.error(f"Error: {e}")
+            else:
+                st.error("Please login first")
+        st.markdown("---")
+
     consumer_key = st.text_input("Consumer Key", type="password", help="From Kotak Neo Trade API settings")
     mobile_number = st.text_input("Mobile Number", help="Registered Mobile Number with Country Code (e.g., +91...)")
     # password = st.text_input("Password", type="password", help="Your account password") # Not used in TOTP flow
@@ -119,8 +136,16 @@ if 'client' in st.session_state:
                             # Use dynamic segment or fallback
                             seg = ce_seg if ce_seg else "nse_fo"
                             q = client.quotes(instrument_tokens=[{"instrument_token": ce_token, "exchange_segment": seg}], quote_type="ltp")
-                            if q and 'data' in q and len(q['data']) > 0:
-                                ce_ltp = q['data'][0].get('ltp', 'N/A')
+
+                            if q and 'data' in q:
+                                # Data might be a list or dict depending on API version
+                                data = q['data']
+                                if isinstance(data, list) and len(data) > 0:
+                                    ce_ltp = data[0].get('ltp', 'N/A')
+                                elif isinstance(data, dict): # Handle dict response
+                                    ce_ltp = data.get('ltp', 'N/A')
+                                else:
+                                    ce_ltp = "No Data"
                             else:
                                 ce_ltp = "N/A"
                         except Exception as e:
@@ -128,6 +153,8 @@ if 'client' in st.session_state:
                             if st.checkbox("Show CE Error", key="ce_err"):
                                 st.write(f"Token: {ce_token}, Seg: {ce_seg}")
                                 st.write(e)
+                                try: st.write("Raw Resp:", q)
+                                except: pass
                     st.metric("CE LTP", ce_ltp)
 
                 with col4:
@@ -141,8 +168,15 @@ if 'client' in st.session_state:
                             # Use dynamic segment or fallback
                             seg = pe_seg if pe_seg else "nse_fo"
                             q = client.quotes(instrument_tokens=[{"instrument_token": pe_token, "exchange_segment": seg}], quote_type="ltp")
-                            if q and 'data' in q and len(q['data']) > 0:
-                                pe_ltp = q['data'][0].get('ltp', 'N/A')
+
+                            if q and 'data' in q:
+                                data = q['data']
+                                if isinstance(data, list) and len(data) > 0:
+                                    pe_ltp = data[0].get('ltp', 'N/A')
+                                elif isinstance(data, dict):
+                                    pe_ltp = data.get('ltp', 'N/A')
+                                else:
+                                    pe_ltp = "No Data"
                             else:
                                 pe_ltp = "N/A"
                         except Exception as e:
@@ -150,6 +184,8 @@ if 'client' in st.session_state:
                             if st.checkbox("Show PE Error", key="pe_err"):
                                 st.write(f"Token: {pe_token}, Seg: {pe_seg}")
                                 st.write(e)
+                                try: st.write("Raw Resp:", q)
+                                except: pass
                     st.metric("PE LTP", pe_ltp)
 
                 with col5:
