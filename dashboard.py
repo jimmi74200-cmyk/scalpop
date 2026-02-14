@@ -109,7 +109,7 @@ if 'client' in st.session_state:
                 col3, col4, col5 = st.columns(3)
 
                 with col3:
-                    ce_strike = st.selectbox("CE Strike", strikes, index=len(strikes)//2 if strikes else 0)
+                    ce_strike = st.selectbox("CE Strike", strikes, index=len(strikes)//2 if strikes else 0, format_func=lambda x: f"{float(x):g}")
                     # Get LTP for CE
                     ce_token = get_token(df_indices, symbol, expiry, ce_strike, "CE")
                     ce_ltp = "Loading..."
@@ -121,12 +121,13 @@ if 'client' in st.session_state:
                                 ce_ltp = q['data'][0].get('ltp', 'N/A')
                             else:
                                 ce_ltp = "N/A"
-                        except Exception:
+                        except Exception as e:
                             ce_ltp = "Err"
+                            if st.checkbox("Show CE Error", key="ce_err"): st.write(e)
                     st.metric("CE LTP", ce_ltp)
 
                 with col4:
-                    pe_strike = st.selectbox("PE Strike", strikes, index=len(strikes)//2 if strikes else 0)
+                    pe_strike = st.selectbox("PE Strike", strikes, index=len(strikes)//2 if strikes else 0, format_func=lambda x: f"{float(x):g}")
                     # Get LTP for PE
                     pe_token = get_token(df_indices, symbol, expiry, pe_strike, "PE")
                     pe_ltp = "Loading..."
@@ -138,8 +139,9 @@ if 'client' in st.session_state:
                                 pe_ltp = q['data'][0].get('ltp', 'N/A')
                             else:
                                 pe_ltp = "N/A"
-                        except:
+                        except Exception as e:
                             pe_ltp = "Err"
+                            if st.checkbox("Show PE Error", key="pe_err"): st.write(e)
                     st.metric("PE LTP", pe_ltp)
 
                 with col5:

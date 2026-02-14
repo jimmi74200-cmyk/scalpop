@@ -167,44 +167,33 @@ def filter_data_for_indices(df, symbols=None):
 
                 # If significant portion is numeric, convert
                 if numeric_expiry.notna().sum() > 0:
-                     # Check if it's seconds or milliseconds.
-                     # Current year ~1.7e9 (seconds) or 1.7e12 (ms).
-                     # User values: 1455805800 -> Feb 2016? Wait.
-                     # 1455805800 is 2016-02-18.
-                     # Kotak sometimes uses older timestamps or specific formats?
-                     # Or maybe these are seconds from epoch + offset?
-                     # Let's assume standard unix timestamp (seconds).
-
-                     # But wait, 2016 is very old.
-                     # Maybe the data is just old test data?
-                     # Or maybe the values are something else.
-                     # Let's try to convert using pd.to_datetime with unit='s' first.
-
-                     # However, to be safe, we'll try to convert and format as DDMMMYYYY
                      dates = pd.to_datetime(numeric_expiry, unit='s', errors='coerce')
 
-                     # Year Correction Logic: If dates are suspiciously old (e.g., < 2024),
-                     # it might be due to an epoch offset or old data.
-                     # Check if median year is < current year - 1 (e.g. < 2025 if current is 2026).
-                     # If so, add seconds to shift to current year (approx).
+                     # Year Correction Logic
                      if not dates.empty:
                          current_year = pd.Timestamp.now().year
                          median_year = dates.dt.year.median()
 
                          # If median year is suspiciously old (more than 1 year ago)
                          if median_year < (current_year - 1):
-                             # Calculate offset to bring to current year
-                             # Difference in seconds: (current_year - median_year) * 31557600
                              offset_years = current_year - median_year
                              offset_seconds = offset_years * 31557600 # 365.25 days
                              dates = dates + pd.to_timedelta(offset_seconds, unit='s')
 
                      df_filtered['expiry'] = dates.dt.strftime('%d%b%Y').str.upper()
-
-                     # If conversion failed (NaT), revert to original for those rows?
-                     # For now, let's assume the conversion works for valid timestamps.
             except Exception:
                 pass # Keep original if conversion fails
+
+        # Clean Instrument Tokens (Remove decimals if present)
+        if 'instrument_token' in df_filtered.columns:
+            # Convert to numeric first to handle string representations
+            df_filtered['instrument_token'] = pd.to_numeric(df_filtered['instrument_token'], errors='coerce').fillna(0).astype(int).astype(str)
+
+        # Clean Strike Prices (Convert to float for consistency)
+        if 'strike' in df_filtered.columns:
+             # Handle weird formats like "18000;"
+             df_filtered['strike'] = df_filtered['strike'].astype(str).str.replace(';', '', regex=False)
+             df_filtered['strike'] = pd.to_numeric(df_filtered['strike'], errors='coerce')
 
         return df_filtered
 
