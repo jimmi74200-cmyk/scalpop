@@ -73,6 +73,7 @@ def filter_data_for_indices(df, symbols=None):
         'lToken': 'instrument_token',
         'pExchSeg': 'exchange_segment', # Add segment mapping
         'pSegment': 'exchange_segment',
+        'pInstType': 'instrument_type', # Add instrument type mapping
 
         # Adding potential alternates
         'Symbol': 'symbol',

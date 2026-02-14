@@ -131,6 +131,82 @@ if 'client' in st.session_state:
                 # Get Strikes
                 strikes = get_strikes(df_indices, symbol, expiry)
 
+                # Strike Selection Controls
+                st.markdown("##### Strike Selection")
+                sc1, sc2, sc3 = st.columns([1, 1, 2])
+                with sc1:
+                    strike_mode = st.radio("Mode", ["Manual", "ATM", "ITM"], horizontal=True, key="strike_mode")
+                with sc2:
+                    if st.button("Refresh Strikes"):
+                        # Logic to find Future Price and auto-select strikes
+                        try:
+                            # 1. Find Future Token for this symbol/expiry
+                            # Note: We rely on 'instrument_type' mapped from pInstType
+                            # Futures usually have 'FUT' or 'FUTIDX'
+                            fut_subset = df_indices[
+                                (df_indices['symbol'] == symbol) &
+                                (df_indices['expiry'] == expiry) &
+                                (df_indices['instrument_type'].astype(str).str.contains("FUT", case=False, na=False))
+                            ]
+
+                            ref_price = None
+                            if not fut_subset.empty:
+                                fut_token = str(fut_subset.iloc[0]['instrument_token']).strip()
+                                fut_seg = str(fut_subset.iloc[0]['exchange_segment']).strip().lower()
+                                if not fut_seg: fut_seg = "nse_fo"
+
+                                # Fetch Future LTP
+                                q = client.quotes(instrument_tokens=[{"instrument_token": fut_token, "exchange_segment": fut_seg}], quote_type="ltp")
+
+                                # Extract LTP using our recursive helper (defined below, moving up needed or use session state)
+                                # Need to define extract_ltp before this or duplicate logic.
+                                # I'll perform extraction manually here or move the function up.
+                                # Moving function up is cleaner but creates a big diff block.
+                                # I'll implement a mini-extractor here.
+                                def quick_extract(resp):
+                                    if isinstance(resp, dict):
+                                        for k,v in resp.items():
+                                            if str(k).lower() == 'ltp': return v
+                                            if isinstance(v, (dict, list)):
+                                                r = quick_extract(v)
+                                                if r: return r
+                                    elif isinstance(resp, list):
+                                        for i in resp:
+                                            r = quick_extract(i)
+                                            if r: return r
+                                    return None
+
+                                ref_price = quick_extract(q)
+
+                            if ref_price:
+                                ref_price = float(ref_price)
+                                st.toast(f"Reference Price (Future): {ref_price}")
+
+                                # Find Closest Strike (ATM)
+                                # strikes is a list of floats
+                                # Sort by distance to ref_price
+                                closest_idx = min(range(len(strikes)), key=lambda i: abs(strikes[i] - ref_price))
+
+                                # ATM
+                                ce_idx = closest_idx
+                                pe_idx = closest_idx
+
+                                if strike_mode == "ITM":
+                                    # CE ITM: Strike < Spot. So go lower index (if sorted ascending)
+                                    # PE ITM: Strike > Spot. So go higher index.
+                                    # Assuming strikes are sorted ascending
+                                    ce_idx = max(0, closest_idx - 1)
+                                    pe_idx = min(len(strikes) - 1, closest_idx + 1)
+
+                                st.session_state['ce_idx_val'] = ce_idx
+                                st.session_state['pe_idx_val'] = pe_idx
+                                st.rerun()
+                            else:
+                                st.warning("Could not fetch Reference Price (Future) to auto-select.")
+
+                        except Exception as e:
+                            st.error(f"Auto-select failed: {e}")
+
                 col3, col4, col5 = st.columns(3)
 
                 def extract_ltp(response):
@@ -169,7 +245,11 @@ if 'client' in st.session_state:
                     return "N/A"
 
                 with col3:
-                    ce_strike = st.selectbox("CE Strike", strikes, index=len(strikes)//2 if strikes else 0, format_func=lambda x: f"{float(x):g}")
+                    # Determine default index
+                    ce_def_idx = st.session_state.get('ce_idx_val', len(strikes)//2 if strikes else 0)
+                    if ce_def_idx >= len(strikes): ce_def_idx = 0
+
+                    ce_strike = st.selectbox("CE Strike", strikes, index=ce_def_idx, format_func=lambda x: f"{float(x):g}", key="ce_strike_box")
                     # Get LTP for CE
                     ce_token, ce_seg = get_token_and_segment(df_indices, symbol, expiry, ce_strike, "CE")
                     ce_ltp = "Loading..."
@@ -194,7 +274,10 @@ if 'client' in st.session_state:
                     st.metric("CE LTP", ce_ltp)
 
                 with col4:
-                    pe_strike = st.selectbox("PE Strike", strikes, index=len(strikes)//2 if strikes else 0, format_func=lambda x: f"{float(x):g}")
+                    pe_def_idx = st.session_state.get('pe_idx_val', len(strikes)//2 if strikes else 0)
+                    if pe_def_idx >= len(strikes): pe_def_idx = 0
+
+                    pe_strike = st.selectbox("PE Strike", strikes, index=pe_def_idx, format_func=lambda x: f"{float(x):g}", key="pe_strike_box")
                     # Get LTP for PE
                     pe_token, pe_seg = get_token_and_segment(df_indices, symbol, expiry, pe_strike, "PE")
                     pe_ltp = "Loading..."
