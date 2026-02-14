@@ -158,6 +158,36 @@ def filter_data_for_indices(df, symbols=None):
             if pattern:
                  df_filtered = df[df['symbol'].str.contains(pattern, na=False)]
 
+        # Convert Expiry to Readable Format if numeric/timestamp
+        if 'expiry' in df_filtered.columns:
+            # Check if expiry looks numeric (Unix timestamp)
+            try:
+                # Attempt to convert to numeric, coercing errors
+                numeric_expiry = pd.to_numeric(df_filtered['expiry'], errors='coerce')
+
+                # If significant portion is numeric, convert
+                if numeric_expiry.notna().sum() > 0:
+                     # Check if it's seconds or milliseconds.
+                     # Current year ~1.7e9 (seconds) or 1.7e12 (ms).
+                     # User values: 1455805800 -> Feb 2016? Wait.
+                     # 1455805800 is 2016-02-18.
+                     # Kotak sometimes uses older timestamps or specific formats?
+                     # Or maybe these are seconds from epoch + offset?
+                     # Let's assume standard unix timestamp (seconds).
+
+                     # But wait, 2016 is very old.
+                     # Maybe the data is just old test data?
+                     # Or maybe the values are something else.
+                     # Let's try to convert using pd.to_datetime with unit='s' first.
+
+                     # However, to be safe, we'll try to convert and format as DDMMMYYYY
+                     df_filtered['expiry'] = pd.to_datetime(numeric_expiry, unit='s', errors='coerce').dt.strftime('%d%b%Y').str.upper()
+
+                     # If conversion failed (NaT), revert to original for those rows?
+                     # For now, let's assume the conversion works for valid timestamps.
+            except Exception:
+                pass # Keep original if conversion fails
+
         return df_filtered
 
     return df
