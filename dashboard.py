@@ -150,6 +150,9 @@ if 'client' in st.session_state:
                             root_symbol = symbol.split()[0] # e.g. "NIFTY" from "NIFTY 50" or "NIFTY"
 
                             # Filter for ANY Future matching the root symbol
+                            # Debug: check available types
+                            # st.write("Types:", df_indices['instrument_type'].unique())
+
                             all_futs = df_indices[
                                 (df_indices['symbol'].str.contains(root_symbol, case=False, na=False)) &
                                 (df_indices['instrument_type'].astype(str).str.contains("FUT", case=False, na=False))
@@ -174,7 +177,11 @@ if 'client' in st.session_state:
 
                             # Debug info if failed
                             if fut_subset.empty:
-                                st.warning(f"No Future found for {symbol} (Root: {root_symbol}). Available Futures: {all_futs['symbol'].unique() if not all_futs.empty else 'None'}")
+                                st.warning(f"No Future found for {symbol} (Root: {root_symbol}).")
+                                if not all_futs.empty:
+                                    st.write("Candidates:", all_futs[['symbol', 'expiry', 'instrument_type']].head())
+                                else:
+                                    st.write("No Futures found in index data. Instrument Types available:", df_indices['instrument_type'].unique())
 
                             ref_price = None
 
