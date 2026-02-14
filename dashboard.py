@@ -24,12 +24,20 @@ with st.sidebar:
     # Test Quote Debug Tool
     if st.checkbox("Show Quote Tester"):
         st.subheader("Quote Tester")
-        t_token = st.text_input("Instrument Token")
-        t_seg = st.text_input("Exchange Segment", value="nse_fo")
+
+        # Helper to get values from session state if set by main UI
+        def_token = st.session_state.get('debug_token', '')
+        def_seg = st.session_state.get('debug_seg', 'nse_fo')
+
+        t_token = st.text_input("Instrument Token", value=def_token, help="Enter the numeric token ID (e.g., 10000). You can auto-fill this from the main dashboard.")
+        t_seg = st.text_input("Exchange Segment", value=def_seg, help="e.g., nse_fo, bse_fo, nse_cm")
+
         if st.button("Get Quote"):
             if 'client' in st.session_state:
                 try:
-                    res = st.session_state['client'].quotes(instrument_tokens=[{"instrument_token": t_token, "exchange_segment": t_seg}], quote_type="ltp")
+                    # Clean token input
+                    clean_token = str(t_token).strip()
+                    res = st.session_state['client'].quotes(instrument_tokens=[{"instrument_token": clean_token, "exchange_segment": t_seg}], quote_type="ltp")
                     st.write(res)
                 except Exception as e:
                     st.error(f"Error: {e}")
@@ -150,6 +158,10 @@ if 'client' in st.session_state:
                                 ce_ltp = "N/A"
                         except Exception as e:
                             ce_ltp = "Err"
+                            # Auto-populate debug tool on error
+                            st.session_state['debug_token'] = ce_token
+                            st.session_state['debug_seg'] = ce_seg if ce_seg else "nse_fo"
+
                             if st.checkbox("Show CE Error", key="ce_err"):
                                 st.write(f"Token: {ce_token}, Seg: {ce_seg}")
                                 st.write(e)
