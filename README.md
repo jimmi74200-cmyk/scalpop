@@ -32,7 +32,14 @@ Or use the `run.bat` / `run.sh` scripts.
 
 ## Features
 
-- **Quick Login**: Save your credentials securely (session-based).
+- **Quick Login**: Secure, session-based login (v2 API flow).
 - **Option Chain**: View NIFTY/BANKNIFTY/FINNIFTY option chains with live LTP.
-- **Order Placement**: Place Market Entry orders.
-- **Stop Loss**: Automatically places a secondary Stop Loss Market (SL-M) order based on your SL points input.
+- **Auto-Strike Selection**: ATM/ITM/OTM selection with "Refresh" logic based on Future/Spot price.
+- **Robust Data Handling**: Fixes for Scrip Master column names, expiry dates (2016->Current), and strike scaling.
+- **Order Placement**:
+  - Entry: Market Order.
+  - Stop Loss: Separate **Stop Loss Limit (SL)** order placed immediately after entry success.
+- **Debugging**: Built-in "Quote Tester" and Raw Response viewer for troubleshooting.
+
+---
+*Last Updated: 2025-02-27 (Fixed Spot Index Fallback & SL Limit Order)*
