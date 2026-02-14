@@ -63,12 +63,15 @@ def filter_data_for_indices(df, symbols=None):
     # lToken -> Instrument Token
 
     col_map = {
-        'pSymbol': 'symbol',
+        'pSymbol': 'instrument_token', # Based on debug output, pSymbol contains ID (100000)
         'pExpiryDate': 'expiry',
         'pOptionType': 'option_type',
         'dStrikePrice': 'strike',
+        'dStrikePrice;': 'strike', # Handle trailing semicolon
         'pTrdSymbol': 'trading_symbol',
+        'pSymbolName': 'symbol', # Likely the underlying ticker
         'lToken': 'instrument_token',
+
         # Adding potential alternates
         'Symbol': 'symbol',
         'Expiry': 'expiry',
@@ -77,12 +80,14 @@ def filter_data_for_indices(df, symbols=None):
         'Token': 'instrument_token',
         'TradingSymbol': 'trading_symbol',
         # lowercase
-        'psymbol': 'symbol',
+        'psymbol': 'instrument_token',
         'pexpirydate': 'expiry',
         'poptiontype': 'option_type',
         'dstrikeprice': 'strike',
+        'dstrikeprice;': 'strike',
         'ltoken': 'instrument_token',
-        'ptrdsymbol': 'trading_symbol'
+        'ptrdsymbol': 'trading_symbol',
+        'psymbolname': 'symbol'
     }
 
     # Rename known columns if found
