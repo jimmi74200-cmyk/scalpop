@@ -135,14 +135,13 @@ if 'client' in st.session_state:
                 st.markdown("##### Strike Selection")
                 sc1, sc2, sc3 = st.columns([1, 1, 2])
                 with sc1:
-                    strike_mode = st.radio("Mode", ["Manual", "ATM", "ITM"], horizontal=True, key="strike_mode")
+                    strike_opts = ["ATM", "ITM1", "ITM2", "ITM3", "ITM4", "ITM5", "OTM1", "OTM2", "OTM3", "OTM4", "OTM5"]
+                    strike_mode = st.selectbox("Select Strike", strike_opts, key="strike_mode")
                 with sc2:
                     if st.button("Refresh Strikes"):
                         # Logic to find Future Price and auto-select strikes
                         try:
                             # 1. Find Future Token for this symbol/expiry
-                            # Note: We rely on 'instrument_type' mapped from pInstType
-                            # Futures usually have 'FUT' or 'FUTIDX'
                             fut_subset = df_indices[
                                 (df_indices['symbol'] == symbol) &
                                 (df_indices['expiry'] == expiry) &
@@ -158,15 +157,11 @@ if 'client' in st.session_state:
                                 # Fetch Future LTP
                                 q = client.quotes(instrument_tokens=[{"instrument_token": fut_token, "exchange_segment": fut_seg}], quote_type="ltp")
 
-                                # Extract LTP using our recursive helper (defined below, moving up needed or use session state)
-                                # Need to define extract_ltp before this or duplicate logic.
-                                # I'll perform extraction manually here or move the function up.
-                                # Moving function up is cleaner but creates a big diff block.
-                                # I'll implement a mini-extractor here.
+                                # Mini-extractor
                                 def quick_extract(resp):
                                     if isinstance(resp, dict):
                                         for k,v in resp.items():
-                                            if str(k).lower() == 'ltp': return v
+                                            if str(k).strip().lower() in ['ltp', 'last_price', 'close']: return v
                                             if isinstance(v, (dict, list)):
                                                 r = quick_extract(v)
                                                 if r: return r
@@ -183,20 +178,30 @@ if 'client' in st.session_state:
                                 st.toast(f"Reference Price (Future): {ref_price}")
 
                                 # Find Closest Strike (ATM)
-                                # strikes is a list of floats
-                                # Sort by distance to ref_price
+                                # strikes is a list of floats, assumed sorted ascending
                                 closest_idx = min(range(len(strikes)), key=lambda i: abs(strikes[i] - ref_price))
 
-                                # ATM
-                                ce_idx = closest_idx
-                                pe_idx = closest_idx
+                                # Parse Mode (ATM, ITM1, OTM2, etc.)
+                                offset = 0
+                                if "ITM" in strike_mode:
+                                    offset = int(strike_mode.replace("ITM", ""))
+                                    # CE ITM = Lower Strike (-offset)
+                                    # PE ITM = Higher Strike (+offset)
+                                    ce_offset = -offset
+                                    pe_offset = offset
+                                elif "OTM" in strike_mode:
+                                    offset = int(strike_mode.replace("OTM", ""))
+                                    # CE OTM = Higher Strike (+offset)
+                                    # PE OTM = Lower Strike (-offset)
+                                    ce_offset = offset
+                                    pe_offset = -offset
+                                else:
+                                    # ATM
+                                    ce_offset = 0
+                                    pe_offset = 0
 
-                                if strike_mode == "ITM":
-                                    # CE ITM: Strike < Spot. So go lower index (if sorted ascending)
-                                    # PE ITM: Strike > Spot. So go higher index.
-                                    # Assuming strikes are sorted ascending
-                                    ce_idx = max(0, closest_idx - 1)
-                                    pe_idx = min(len(strikes) - 1, closest_idx + 1)
+                                ce_idx = max(0, min(len(strikes)-1, closest_idx + ce_offset))
+                                pe_idx = max(0, min(len(strikes)-1, closest_idx + pe_offset))
 
                                 st.session_state['ce_idx_val'] = ce_idx
                                 st.session_state['pe_idx_val'] = pe_idx
