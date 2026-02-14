@@ -78,13 +78,15 @@ if 'client' in st.session_state:
             st.write("Raw Columns:", df_master.columns.tolist())
             st.dataframe(df_master.head())
 
-        # Process Data using logic.py
+        # Process Data using logic.py (handles robust renaming and filtering)
         try:
             df_indices = filter_data_for_indices(df_master)
 
             if df_indices.empty and not df_master.empty:
                  st.warning("No indices found after filtering. Check if Scrip Master format has changed.")
-                 st.write("Available Symbols (First 50):", sorted(df_master.iloc[:, 0].unique())[:50])
+                 # Show helpful debug info
+                 st.write("Available Symbols (First 50):", sorted(df_master.iloc[:, 0].astype(str).unique())[:50])
+                 st.write("Detected Columns:", df_master.columns.tolist())
 
             # UI Layout
             col1, col2 = st.columns(2)

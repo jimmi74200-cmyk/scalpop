@@ -85,8 +85,59 @@ def filter_data_for_indices(df, symbols=None):
         'ptrdsymbol': 'trading_symbol'
     }
 
-    # Rename known columns
+    # Rename known columns if found
     df = df.rename(columns=col_map)
+
+    # --- Intelligent Column Detection (Fallback) ---
+    # If standard columns are missing, try to detect based on content or loose header matching
+
+    # 1. Symbol Column Detection
+    if 'symbol' not in df.columns:
+        # Look for columns containing "Sym" or "Trd" in header
+        possible_symbol_cols = [c for c in df.columns if "sym" in c.lower() or "trd" in c.lower()]
+        # Check content for "NIFTY"
+        for col in possible_symbol_cols + list(df.select_dtypes(include=['object']).columns):
+            if df[col].astype(str).str.contains("NIFTY", case=False, na=False).any():
+                df = df.rename(columns={col: 'symbol'})
+                break
+
+    # 2. Expiry Column Detection
+    if 'expiry' not in df.columns:
+        # Look for columns containing "Exp" or "Date"
+        possible_expiry_cols = [c for c in df.columns if "exp" in c.lower() or "date" in c.lower()]
+        for col in possible_expiry_cols:
+             # Basic check: usually contains numbers and letters or slashes
+             sample = df[col].dropna().astype(str).iloc[0] if not df[col].empty else ""
+             if any(char.isdigit() for char in sample):
+                 df = df.rename(columns={col: 'expiry'})
+                 break
+
+    # 3. Option Type Detection
+    if 'option_type' not in df.columns:
+        possible_opt_cols = [c for c in df.columns if "opt" in c.lower() or "type" in c.lower()]
+        # Check content for CE/PE or Call/Put
+        for col in possible_opt_cols + list(df.select_dtypes(include=['object']).columns):
+             if df[col].astype(str).str.contains("CE|PE|Call|Put", case=False, regex=True, na=False).any():
+                 df = df.rename(columns={col: 'option_type'})
+                 break
+
+    # 4. Strike Price Detection
+    if 'strike' not in df.columns:
+        possible_strike_cols = [c for c in df.columns if "strike" in c.lower() or "price" in c.lower()]
+        # Prefer numeric columns
+        nums = df.select_dtypes(include=['number']).columns
+        candidates = [c for c in possible_strike_cols if c in nums]
+        if candidates:
+            df = df.rename(columns={candidates[0]: 'strike'})
+        elif possible_strike_cols:
+             df = df.rename(columns={possible_strike_cols[0]: 'strike'})
+
+    # 5. Token Detection
+    if 'instrument_token' not in df.columns:
+         possible_token_cols = [c for c in df.columns if "token" in c.lower() or "inst" in c.lower()]
+         if possible_token_cols:
+             df = df.rename(columns={possible_token_cols[0]: 'instrument_token'})
+
 
     # Filter for symbols if 'symbol' column exists
     if 'symbol' in df.columns:
