@@ -288,11 +288,27 @@ if 'client' in st.session_state:
                                      if trigger_price <= 0:
                                          st.warning(f"Calculated SL Trigger Price ({trigger_price}) is invalid. SL Order skipped.")
                                      else:
+                                         # Calculate Limit Price for SL order (SL-L)
+                                         # For Sell SL: Limit should be <= Trigger (to ensure fill)
+                                         # For Buy SL: Limit should be >= Trigger
+                                         buffer_points = 2.0 # Fixed buffer to ensure execution
+
+                                         if sl_transaction_type == "S":
+                                             sl_limit_price = trigger_price - buffer_points
+                                         else:
+                                             sl_limit_price = trigger_price + buffer_points
+
+                                         # Round to tick size
+                                         sl_limit_price = round(sl_limit_price * 20) / 20
+
+                                         # Ensure price is valid
+                                         if sl_limit_price <= 0: sl_limit_price = 0.05
+
                                          sl_args = {
                                             "exchange_segment": "nse_fo",
                                             "product": product_type,
-                                            "price": "0", # SL-M means Market after Trigger
-                                            "order_type": "SL-M",
+                                            "price": str(sl_limit_price), # SL-L requires a limit price
+                                            "order_type": "SL", # Changed from SL-M to SL (Stop Limit)
                                             "quantity": str(quantity),
                                             "validity": "DAY",
                                             "trading_symbol": trading_sym,
@@ -303,7 +319,7 @@ if 'client' in st.session_state:
 
                                          sl_resp = client.place_order(**sl_args)
                                          if sl_resp and 'nOrdNo' in sl_resp:
-                                             st.info(f"Stop Loss Order Placed! ID: {sl_resp['nOrdNo']} at Trigger: {trigger_price}")
+                                             st.info(f"Stop Loss Limit Order Placed! ID: {sl_resp['nOrdNo']} Trigger: {trigger_price}, Limit: {sl_limit_price}")
                                          else:
                                              st.warning(f"Stop Loss Order Failed: {sl_resp.get('Error', sl_resp)}")
 
