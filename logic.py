@@ -65,7 +65,21 @@ def filter_data_for_indices(df, symbols=["NIFTY", "BANKNIFTY", "FINNIFTY"]):
         'pOptionType': 'option_type',
         'dStrikePrice': 'strike',
         'pTrdSymbol': 'trading_symbol',
-        'lToken': 'instrument_token'
+        'lToken': 'instrument_token',
+        # Adding potential alternates
+        'Symbol': 'symbol',
+        'Expiry': 'expiry',
+        'OptionType': 'option_type',
+        'StrikePrice': 'strike',
+        'Token': 'instrument_token',
+        'TradingSymbol': 'trading_symbol',
+        # lowercase
+        'psymbol': 'symbol',
+        'pexpirydate': 'expiry',
+        'poptiontype': 'option_type',
+        'dstrikeprice': 'strike',
+        'ltoken': 'instrument_token',
+        'ptrdsymbol': 'trading_symbol'
     }
 
     # Rename known columns

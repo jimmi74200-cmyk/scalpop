@@ -74,7 +74,7 @@ if 'client' in st.session_state:
 
     if df_master is not None:
         # Debug Mode Toggle
-        if st.sidebar.checkbox("Show Raw Scrip Master Columns"):
+        if st.sidebar.checkbox("Show Raw Scrip Master Columns", value=True):
             st.write("Raw Columns:", df_master.columns.tolist())
             st.dataframe(df_master.head())
 
@@ -84,6 +84,7 @@ if 'client' in st.session_state:
 
             if df_indices.empty and not df_master.empty:
                  st.warning("No indices found after filtering. Check if Scrip Master format has changed.")
+                 st.write("Available Symbols (First 50):", sorted(df_master.iloc[:, 0].unique())[:50])
 
             # UI Layout
             col1, col2 = st.columns(2)
