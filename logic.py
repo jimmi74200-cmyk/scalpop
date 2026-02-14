@@ -185,15 +185,17 @@ def filter_data_for_indices(df, symbols=None):
 
                      # Year Correction Logic: If dates are suspiciously old (e.g., < 2024),
                      # it might be due to an epoch offset or old data.
-                     # Check if median year is < 2024. If so, add seconds to shift to current year (approx).
-                     # Actually, 2016 vs 2025 is ~9 years.
-                     # Let's inspect the median date.
+                     # Check if median year is < current year - 1 (e.g. < 2025 if current is 2026).
+                     # If so, add seconds to shift to current year (approx).
                      if not dates.empty:
+                         current_year = pd.Timestamp.now().year
                          median_year = dates.dt.year.median()
-                         if median_year < 2024:
-                             # Calculate offset to bring to current year (2025)
-                             # Difference in seconds: (2025 - median_year) * 31536000
-                             offset_years = 2025 - median_year
+
+                         # If median year is suspiciously old (more than 1 year ago)
+                         if median_year < (current_year - 1):
+                             # Calculate offset to bring to current year
+                             # Difference in seconds: (current_year - median_year) * 31557600
+                             offset_years = current_year - median_year
                              offset_seconds = offset_years * 31557600 # 365.25 days
                              dates = dates + pd.to_timedelta(offset_seconds, unit='s')
 
