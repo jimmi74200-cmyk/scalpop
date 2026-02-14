@@ -134,24 +134,32 @@ if 'client' in st.session_state:
                 col3, col4, col5 = st.columns(3)
 
                 def extract_ltp(response):
-                    """Helper to extract LTP from various response formats"""
+                    """Helper to extract LTP recursively from any nested structure"""
                     if not response:
                         return "No Resp"
 
-                    # Determine source data container
-                    data = response.get('data', response) # Fallback to response itself if no 'data' key
+                    # Recursive search function
+                    def find_key(obj, key):
+                        if isinstance(obj, dict):
+                            if key in obj:
+                                return obj[key]
+                            for k, v in obj.items():
+                                result = find_key(v, key)
+                                if result is not None:
+                                    return result
+                        elif isinstance(obj, list):
+                            for item in obj:
+                                result = find_key(item, key)
+                                if result is not None:
+                                    return result
+                        return None
 
-                    if isinstance(data, list) and len(data) > 0:
-                        return data[0].get('ltp', 'N/A')
-                    elif isinstance(data, dict):
-                        if 'ltp' in data:
-                            return data.get('ltp', 'N/A')
-                        else:
-                            # Iterate through values to find the data dict (handles mixed keys like 'stat', '0')
-                            for val in data.values():
-                                if isinstance(val, dict) and 'ltp' in val:
-                                    return val.get('ltp', 'N/A')
-                    return "N/A"
+                    # Search for 'ltp' or 'last_price'
+                    ltp = find_key(response, 'ltp')
+                    if ltp is None:
+                        ltp = find_key(response, 'LTP') # Case sensitive check
+
+                    return ltp if ltp is not None else "N/A"
 
                 with col3:
                     ce_strike = st.selectbox("CE Strike", strikes, index=len(strikes)//2 if strikes else 0, format_func=lambda x: f"{float(x):g}")
