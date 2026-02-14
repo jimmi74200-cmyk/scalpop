@@ -142,10 +142,25 @@ def filter_data_for_indices(df, symbols=None):
 
     # 5. Token Detection
     if 'instrument_token' not in df.columns:
-         possible_token_cols = [c for c in df.columns if "token" in c.lower() or "inst" in c.lower()]
+         possible_token_cols = [c for c in df.columns if "token" in c.lower() or "code" in c.lower()]
          if possible_token_cols:
              df = df.rename(columns={possible_token_cols[0]: 'instrument_token'})
 
+    # 6. Instrument Type Detection
+    if 'instrument_type' not in df.columns:
+        possible_type_cols = [c for c in df.columns if "inst" in c.lower() or "type" in c.lower()]
+        for col in possible_type_cols:
+             if df[col].astype(str).str.contains("FUT|OPT|IDX|INDEX", case=False, regex=True, na=False).any():
+                 df = df.rename(columns={col: 'instrument_type'})
+                 break
+
+    # 7. Exchange Segment Detection
+    if 'exchange_segment' not in df.columns:
+        possible_seg_cols = [c for c in df.columns if "seg" in c.lower() or "exch" in c.lower()]
+        for col in possible_seg_cols:
+             if df[col].astype(str).str.contains("nse|bse|mcx", case=False, regex=True, na=False).any():
+                 df = df.rename(columns={col: 'exchange_segment'})
+                 break
 
     # Filter for symbols if 'symbol' column exists
     if 'symbol' in df.columns:
