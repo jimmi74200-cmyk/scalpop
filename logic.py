@@ -181,7 +181,23 @@ def filter_data_for_indices(df, symbols=None):
                      # Let's try to convert using pd.to_datetime with unit='s' first.
 
                      # However, to be safe, we'll try to convert and format as DDMMMYYYY
-                     df_filtered['expiry'] = pd.to_datetime(numeric_expiry, unit='s', errors='coerce').dt.strftime('%d%b%Y').str.upper()
+                     dates = pd.to_datetime(numeric_expiry, unit='s', errors='coerce')
+
+                     # Year Correction Logic: If dates are suspiciously old (e.g., < 2024),
+                     # it might be due to an epoch offset or old data.
+                     # Check if median year is < 2024. If so, add seconds to shift to current year (approx).
+                     # Actually, 2016 vs 2025 is ~9 years.
+                     # Let's inspect the median date.
+                     if not dates.empty:
+                         median_year = dates.dt.year.median()
+                         if median_year < 2024:
+                             # Calculate offset to bring to current year (2025)
+                             # Difference in seconds: (2025 - median_year) * 31536000
+                             offset_years = 2025 - median_year
+                             offset_seconds = offset_years * 31557600 # 365.25 days
+                             dates = dates + pd.to_timedelta(offset_seconds, unit='s')
+
+                     df_filtered['expiry'] = dates.dt.strftime('%d%b%Y').str.upper()
 
                      # If conversion failed (NaT), revert to original for those rows?
                      # For now, let's assume the conversion works for valid timestamps.
