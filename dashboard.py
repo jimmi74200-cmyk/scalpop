@@ -12,7 +12,7 @@ except ImportError:
     st.stop()
     sys.exit(1)
 
-from logic import load_scrip_master, filter_data_for_indices, get_expiry_list, get_strikes, get_token
+from logic import load_scrip_master, filter_data_for_indices, get_expiry_list, get_strikes, get_token_and_segment
 
 # Page configuration
 st.set_page_config(page_title="Kotak Neo Quick Dashboard", layout="wide")
@@ -111,37 +111,45 @@ if 'client' in st.session_state:
                 with col3:
                     ce_strike = st.selectbox("CE Strike", strikes, index=len(strikes)//2 if strikes else 0, format_func=lambda x: f"{float(x):g}")
                     # Get LTP for CE
-                    ce_token = get_token(df_indices, symbol, expiry, ce_strike, "CE")
+                    ce_token, ce_seg = get_token_and_segment(df_indices, symbol, expiry, ce_strike, "CE")
                     ce_ltp = "Loading..."
 
                     if ce_token:
                         try:
-                            q = client.quotes(instrument_tokens=[{"instrument_token": ce_token, "exchange_segment": "nse_fo"}], quote_type="ltp")
+                            # Use dynamic segment or fallback
+                            seg = ce_seg if ce_seg else "nse_fo"
+                            q = client.quotes(instrument_tokens=[{"instrument_token": ce_token, "exchange_segment": seg}], quote_type="ltp")
                             if q and 'data' in q and len(q['data']) > 0:
                                 ce_ltp = q['data'][0].get('ltp', 'N/A')
                             else:
                                 ce_ltp = "N/A"
                         except Exception as e:
                             ce_ltp = "Err"
-                            if st.checkbox("Show CE Error", key="ce_err"): st.write(e)
+                            if st.checkbox("Show CE Error", key="ce_err"):
+                                st.write(f"Token: {ce_token}, Seg: {ce_seg}")
+                                st.write(e)
                     st.metric("CE LTP", ce_ltp)
 
                 with col4:
                     pe_strike = st.selectbox("PE Strike", strikes, index=len(strikes)//2 if strikes else 0, format_func=lambda x: f"{float(x):g}")
                     # Get LTP for PE
-                    pe_token = get_token(df_indices, symbol, expiry, pe_strike, "PE")
+                    pe_token, pe_seg = get_token_and_segment(df_indices, symbol, expiry, pe_strike, "PE")
                     pe_ltp = "Loading..."
 
                     if pe_token:
                         try:
-                            q = client.quotes(instrument_tokens=[{"instrument_token": pe_token, "exchange_segment": "nse_fo"}], quote_type="ltp")
+                            # Use dynamic segment or fallback
+                            seg = pe_seg if pe_seg else "nse_fo"
+                            q = client.quotes(instrument_tokens=[{"instrument_token": pe_token, "exchange_segment": seg}], quote_type="ltp")
                             if q and 'data' in q and len(q['data']) > 0:
                                 pe_ltp = q['data'][0].get('ltp', 'N/A')
                             else:
                                 pe_ltp = "N/A"
                         except Exception as e:
                             pe_ltp = "Err"
-                            if st.checkbox("Show PE Error", key="pe_err"): st.write(e)
+                            if st.checkbox("Show PE Error", key="pe_err"):
+                                st.write(f"Token: {pe_token}, Seg: {pe_seg}")
+                                st.write(e)
                     st.metric("PE LTP", pe_ltp)
 
                 with col5:

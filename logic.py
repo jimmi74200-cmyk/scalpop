@@ -71,6 +71,8 @@ def filter_data_for_indices(df, symbols=None):
         'pTrdSymbol': 'trading_symbol',
         'pSymbolName': 'symbol', # Likely the underlying ticker
         'lToken': 'instrument_token',
+        'pExchSeg': 'exchange_segment', # Add segment mapping
+        'pSegment': 'exchange_segment',
 
         # Adding potential alternates
         'Symbol': 'symbol',
@@ -234,9 +236,9 @@ def get_strikes(df, symbol, expiry):
         return strikes
     return []
 
-def get_token(df, symbol, expiry, strike, option_type):
+def get_token_and_segment(df, symbol, expiry, strike, option_type):
     if df is None:
-        return None
+        return None, None
 
     subset = df[
         (df['symbol'] == symbol) &
@@ -246,5 +248,12 @@ def get_token(df, symbol, expiry, strike, option_type):
     ]
 
     if not subset.empty:
-        return str(subset.iloc[0]['instrument_token'])
-    return None
+        token = str(subset.iloc[0]['instrument_token'])
+        # Try to get segment if available
+        segment = "nse_fo" # default
+        if 'exchange_segment' in subset.columns:
+            seg_val = str(subset.iloc[0]['exchange_segment']).lower()
+            if seg_val:
+                segment = seg_val
+        return token, segment
+    return None, None
