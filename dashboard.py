@@ -175,13 +175,37 @@ if 'client' in st.session_state:
                                         if not future_futs.empty:
                                             fut_subset = future_futs.head(1)
 
-                            # Debug info if failed
+                            # Fallback: Try finding Spot Index if Future not found
                             if fut_subset.empty:
-                                st.warning(f"No Future found for {symbol} (Root: {root_symbol}).")
+                                # Look for Index in NSE_CM
+                                # Filter: Symbol matches root, Type contains INDEX/IDX
+                                # Note: Index tokens are usually in a different segment (nse_cm) and might not have expiry.
+                                # But df_indices is filtered for indices.
+
+                                idx_subset = df_indices[
+                                    (df_indices['symbol'].str.contains(root_symbol, case=False, na=False)) &
+                                    (df_indices['instrument_type'].astype(str).str.contains("INDEX|IDX", case=False, regex=True, na=False))
+                                ].copy()
+
+                                if not idx_subset.empty:
+                                    # Prefer NSE_CM
+                                    # Check segments if available
+                                    if 'exchange_segment' in idx_subset.columns:
+                                        nse_idx = idx_subset[idx_subset['exchange_segment'].str.contains('cm', case=False, na=False)]
+                                        if not nse_idx.empty:
+                                            idx_subset = nse_idx
+
+                                    fut_subset = idx_subset.head(1)
+                                    st.info(f"Using Spot Index ({fut_subset.iloc[0]['symbol']}) as reference.")
+
+                            # Debug info if still failed
+                            if fut_subset.empty:
+                                st.warning(f"No Future or Index found for {symbol} (Root: {root_symbol}).")
                                 if not all_futs.empty:
-                                    st.write("Candidates:", all_futs[['symbol', 'expiry', 'instrument_type']].head())
+                                    st.write("Future Candidates:", all_futs[['symbol', 'expiry', 'instrument_type']].head())
                                 else:
-                                    st.write("No Futures found in index data. Instrument Types available:", df_indices['instrument_type'].unique())
+                                    st.write("Debug: Types available:", df_indices['instrument_type'].unique())
+                                    st.write("Debug: Segments available:", df_indices['exchange_segment'].unique() if 'exchange_segment' in df_indices.columns else "N/A")
 
                             ref_price = None
 
@@ -189,8 +213,9 @@ if 'client' in st.session_state:
                                 fut_token = str(fut_subset.iloc[0]['instrument_token']).strip()
                                 fut_seg = str(fut_subset.iloc[0]['exchange_segment']).strip().lower()
                                 if not fut_seg: fut_seg = "nse_fo"
+                                # If it's an index, seg might be nse_cm. Ensure we use the row's segment.
 
-                                # Fetch Future LTP
+                                # Fetch LTP
                                 q = client.quotes(instrument_tokens=[{"instrument_token": fut_token, "exchange_segment": fut_seg}], quote_type="ltp")
 
                                 # Mini-extractor
