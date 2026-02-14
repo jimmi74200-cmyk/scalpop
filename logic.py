@@ -195,6 +195,14 @@ def filter_data_for_indices(df, symbols=None):
              df_filtered['strike'] = df_filtered['strike'].astype(str).str.replace(';', '', regex=False)
              df_filtered['strike'] = pd.to_numeric(df_filtered['strike'], errors='coerce')
 
+             # Heuristic: If strikes are excessively large (e.g., > 200,000 for NIFTY/BANKNIFTY),
+             # they are likely in paisa (multiplied by 100).
+             # Check median strike price.
+             if not df_filtered['strike'].empty:
+                 median_strike = df_filtered['strike'].median()
+                 if median_strike > 200000:
+                     df_filtered['strike'] = df_filtered['strike'] / 100.0
+
         return df_filtered
 
     return df
