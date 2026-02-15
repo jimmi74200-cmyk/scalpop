@@ -218,6 +218,8 @@ if 'client' in st.session_state:
         col_mon, col_ref = st.columns([2, 1])
         with col_mon:
             monitor_on = st.checkbox("Enable Auto-Target Monitor", key="monitor_enabled", help="Refreshes page periodically to check targets.")
+            if monitor_on:
+                st.caption("Method: REST API Polling (1s)")
         with col_ref:
             if st.button("Refresh Orders"):
                 st.rerun()
@@ -859,7 +861,7 @@ if 'client' in st.session_state:
 
     # Auto Refresh Logic
     if st.session_state.get('monitor_enabled'):
-        time.sleep(3) # Wait 3 seconds
+        time.sleep(1) # Wait 1 second for faster updates
         st.rerun()
 
 else:
