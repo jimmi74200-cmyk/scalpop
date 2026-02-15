@@ -564,6 +564,13 @@ if 'client' in st.session_state:
 
                     return subset, new_index
 
+                # Shadow State Sync Function
+                def update_saved_strikes():
+                    if 'ce_strike_box' in st.session_state:
+                         st.session_state['saved_ce_strike'] = st.session_state['ce_strike_box']
+                    if 'pe_strike_box' in st.session_state:
+                         st.session_state['saved_pe_strike'] = st.session_state['pe_strike_box']
+
                 # Helper to update strike via button callback
                 def shift_strike(key, strikes_list, direction):
                     # Get current value from session state
@@ -580,38 +587,48 @@ if 'client' in st.session_state:
 
                         # Calculate new index
                         new_idx = max(0, min(len(strikes_list)-1, curr_idx + direction))
-                        st.session_state[key] = strikes_list[new_idx]
+                        new_val = strikes_list[new_idx]
+
+                        st.session_state[key] = new_val
+                        # Also update shadow state immediately
+                        if key == 'ce_strike_box':
+                            st.session_state['saved_ce_strike'] = new_val
+                        elif key == 'pe_strike_box':
+                            st.session_state['saved_pe_strike'] = new_val
 
                         # Also update shadow selection if we use it
                         if key == 'ce_strike_box':
-                            st.session_state['ce_selected_strike'] = strikes_list[new_idx]
+                            st.session_state['ce_selected_strike'] = new_val
                         elif key == 'pe_strike_box':
-                            st.session_state['pe_selected_strike'] = strikes_list[new_idx]
+                            st.session_state['pe_selected_strike'] = new_val
 
                     except Exception as ex:
                         pass # Ignore if something goes wrong during callback
 
                 with col3:
                     # Determine current CE target
-                    # 1. Check if user manually selected one (in session state via key)
-                    raw_ce_target = st.session_state.get('ce_strike_box')
-                    matched_ce_target = find_best_match(raw_ce_target, strikes)
+                    # Priority: Saved Shadow State -> Auto Select -> Default Middle
 
-                    # 2. If valid user selection found, use it and SYNC session state
+                    # 1. Check shadow state
+                    saved_ce = st.session_state.get('saved_ce_strike')
+                    matched_ce_target = find_best_match(saved_ce, strikes)
+
                     if matched_ce_target is not None:
                         current_ce_target = matched_ce_target
-                        # Force session state to match the exact object in the new list
-                        if st.session_state.get('ce_strike_box') != matched_ce_target:
-                             st.session_state['ce_strike_box'] = matched_ce_target
                     else:
-                        # 3. Fallback to auto-select
+                        # 2. Check auto-select fallback
                         raw_auto_ce = st.session_state.get('ce_selected_strike')
                         matched_auto_ce = find_best_match(raw_auto_ce, strikes)
 
                         if matched_auto_ce is not None:
                              current_ce_target = matched_auto_ce
                         else:
+                             # 3. Default
                              current_ce_target = strikes[len(strikes)//2] if strikes else 0
+
+                    # Sync widget state to matched target to prevent reset
+                    if st.session_state.get('ce_strike_box') != current_ce_target:
+                         st.session_state['ce_strike_box'] = current_ce_target
 
                     # 4. Filter list centered on target
                     ce_strikes_subset, ce_subset_idx = get_filtered_strikes(strikes, current_ce_target, window=30)
@@ -621,7 +638,8 @@ if 'client' in st.session_state:
                     with cc1:
                         st.button("➖", key="ce_minus", help="Shift Strike Down", on_click=shift_strike, args=('ce_strike_box', strikes, -1))
                     with cc2:
-                        ce_strike = st.selectbox("CE Strike", ce_strikes_subset, index=ce_subset_idx, format_func=lambda x: f"{float(x):g}", key="ce_strike_box")
+                        # Add on_change to sync shadow state
+                        ce_strike = st.selectbox("CE Strike", ce_strikes_subset, index=ce_subset_idx, format_func=lambda x: f"{float(x):g}", key="ce_strike_box", on_change=update_saved_strikes)
                     with cc3:
                         st.button("➕", key="ce_plus", help="Shift Strike Up", on_click=shift_strike, args=('ce_strike_box', strikes, 1))
                     # Get LTP for CE
@@ -649,14 +667,11 @@ if 'client' in st.session_state:
 
                 with col4:
                     # Determine current PE target
-                    raw_pe_target = st.session_state.get('pe_strike_box')
-                    matched_pe_target = find_best_match(raw_pe_target, strikes)
+                    saved_pe = st.session_state.get('saved_pe_strike')
+                    matched_pe_target = find_best_match(saved_pe, strikes)
 
                     if matched_pe_target is not None:
                         current_pe_target = matched_pe_target
-                        # Force session state to match
-                        if st.session_state.get('pe_strike_box') != matched_pe_target:
-                             st.session_state['pe_strike_box'] = matched_pe_target
                     else:
                         raw_auto_pe = st.session_state.get('pe_selected_strike')
                         matched_auto_pe = find_best_match(raw_auto_pe, strikes)
@@ -666,6 +681,9 @@ if 'client' in st.session_state:
                         else:
                              current_pe_target = strikes[len(strikes)//2] if strikes else 0
 
+                    if st.session_state.get('pe_strike_box') != current_pe_target:
+                         st.session_state['pe_strike_box'] = current_pe_target
+
                     # 4. Filter list centered on target
                     pe_strikes_subset, pe_subset_idx = get_filtered_strikes(strikes, current_pe_target, window=30)
 
@@ -674,7 +692,7 @@ if 'client' in st.session_state:
                     with pc1:
                         st.button("➖", key="pe_minus", help="Shift Strike Down", on_click=shift_strike, args=('pe_strike_box', strikes, -1))
                     with pc2:
-                        pe_strike = st.selectbox("PE Strike", pe_strikes_subset, index=pe_subset_idx, format_func=lambda x: f"{float(x):g}", key="pe_strike_box")
+                        pe_strike = st.selectbox("PE Strike", pe_strikes_subset, index=pe_subset_idx, format_func=lambda x: f"{float(x):g}", key="pe_strike_box", on_change=update_saved_strikes)
                     with pc3:
                         st.button("➕", key="pe_plus", help="Shift Strike Up", on_click=shift_strike, args=('pe_strike_box', strikes, 1))
                     # Get LTP for PE
