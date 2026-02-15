@@ -195,34 +195,38 @@ if 'client' in st.session_state:
 
                             # Fallback: Try finding Spot Index if Future not found
                             if fut_subset.empty:
-                                # Look for Index in NSE_CM
-                                # Filter: Symbol matches root, Type contains INDEX/IDX
-                                # Note: Index tokens are usually in a different segment (nse_cm) and might not have expiry.
-                                # But df_indices is filtered for indices.
+                                # Strategy: Look for anything in NSE_CM that looks like the root symbol
+                                # We trust segment 'nse_cm' more than 'instrument_type'
 
-                                idx_subset = df_indices[
-                                    (df_indices['symbol'].str.contains(root_symbol, case=False, na=False)) &
-                                    (df_indices['instrument_type'].astype(str).str.contains("INDEX|IDX", case=False, regex=True, na=False))
-                                ].copy()
+                                # 1. Filter by segment 'cm'
+                                cm_subset = df_indices[
+                                    df_indices['exchange_segment'].astype(str).str.contains('cm', case=False, na=False)
+                                ]
 
-                                if not idx_subset.empty:
-                                    # Prefer NSE_CM
-                                    # Check segments if available
-                                    if 'exchange_segment' in idx_subset.columns:
-                                        nse_idx = idx_subset[idx_subset['exchange_segment'].str.contains('cm', case=False, na=False)]
-                                        if not nse_idx.empty:
-                                            idx_subset = nse_idx
+                                if not cm_subset.empty:
+                                    # 2. Filter by root symbol
+                                    idx_subset = cm_subset[
+                                        cm_subset['symbol'].str.contains(root_symbol, case=False, na=False)
+                                    ].copy()
 
-                                    fut_subset = idx_subset.head(1)
-                                    st.info(f"Using Spot Index ({fut_subset.iloc[0]['symbol']}) as reference.")
+                                    if not idx_subset.empty:
+                                        # Prefer short names (e.g. "NIFTY 50" over "NIFTY 50 ...")
+                                        # Or just take the first one
+                                        fut_subset = idx_subset.head(1)
+                                        st.info(f"Using Spot Index ({fut_subset.iloc[0]['symbol']}) as reference.")
+                                    else:
+                                        # If root symbol match failed, maybe try fuzzy?
+                                        pass
 
                             # Debug info if still failed
                             if fut_subset.empty:
                                 st.warning(f"No Future or Index found for {symbol} (Root: {root_symbol}).")
                                 # Extended Debugging
-                                col_matches = [c for c in df_indices.columns if 'sym' in c.lower()]
                                 st.write("Root Symbol:", root_symbol)
-                                st.write("Available Instrument Types:", df_indices['instrument_type'].unique())
+                                if 'instrument_type' in df_indices.columns:
+                                    st.write("Available Types:", df_indices['instrument_type'].unique())
+                                if 'exchange_segment' in df_indices.columns:
+                                    st.write("Available Segments:", df_indices['exchange_segment'].unique())
 
                                 # Show any rows partially matching root symbol that are NOT options
                                 partials = df_indices[
