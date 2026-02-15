@@ -315,11 +315,6 @@ if 'client' in st.session_state:
         st.error(f"Error loading Scrip Master: {e}")
 
     if df_master is not None:
-        # Debug Mode Toggle
-        if st.sidebar.checkbox("Show Raw Scrip Master Columns", value=True):
-            st.write("Raw Columns:", df_master.columns.tolist())
-            st.dataframe(df_master.head())
-
         # Process Data using logic.py (handles robust renaming and filtering)
         try:
             df_indices = filter_data_for_indices(df_master)
