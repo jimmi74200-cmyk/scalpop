@@ -269,8 +269,13 @@ if 'client' in st.session_state:
 
                             if not fut_subset.empty:
                                 fut_token = str(fut_subset.iloc[0]['instrument_token']).strip()
-                                fut_seg = str(fut_subset.iloc[0]['exchange_segment']).strip().lower()
-                                if not fut_seg: fut_seg = "nse_fo"
+                                # Fix: Ensure exchange_segment is a simple string, handling Series or duplicate columns
+                                fut_seg_raw = fut_subset.iloc[0]['exchange_segment']
+                                if isinstance(fut_seg_raw, pd.Series):
+                                     fut_seg_raw = fut_seg_raw.iloc[0]
+                                fut_seg = str(fut_seg_raw).strip().lower()
+
+                                if not fut_seg or fut_seg == 'nan': fut_seg = "nse_fo"
                                 # If it's an index, seg might be nse_cm. Ensure we use the row's segment.
 
                                 fut_token_debug = fut_token

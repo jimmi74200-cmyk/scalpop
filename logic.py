@@ -167,6 +167,13 @@ def filter_data_for_indices(df, symbols=None):
                  df = df.rename(columns={col: 'exchange_segment'})
                  break
 
+    # Fix: Remove duplicate 'exchange_segment' columns if they exist
+    # This happens if both pExchSeg and pSegment are present and mapped
+    if 'exchange_segment' in df.columns:
+        if isinstance(df['exchange_segment'], pd.DataFrame):
+             # Keep the first one
+             df = df.loc[:, ~df.columns.duplicated()]
+
     # Filter for symbols if 'symbol' column exists
     if 'symbol' in df.columns:
         # Normalize symbol column (strip whitespace, uppercase)
