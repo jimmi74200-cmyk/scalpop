@@ -78,6 +78,7 @@ def filter_data_for_indices(df, symbols=None):
         'pExchSeg': 'exchange_segment', # Add segment mapping
         'pSegment': 'exchange_segment',
         'pInstType': 'instrument_type', # Add instrument type mapping
+        'pScripRefKey': 'scrip_ref_key', # Map possible underlying token for debug
 
         # Adding potential alternates
         'Symbol': 'symbol',

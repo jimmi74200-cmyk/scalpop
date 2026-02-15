@@ -263,6 +263,9 @@ if 'client' in st.session_state:
                                     st.write("No non-option candidates found matching root.")
 
                             ref_price = None
+                            fut_token_debug = ""
+                            fut_seg_debug = ""
+                            q_debug = {}
 
                             if not fut_subset.empty:
                                 fut_token = str(fut_subset.iloc[0]['instrument_token']).strip()
@@ -270,14 +273,18 @@ if 'client' in st.session_state:
                                 if not fut_seg: fut_seg = "nse_fo"
                                 # If it's an index, seg might be nse_cm. Ensure we use the row's segment.
 
+                                fut_token_debug = fut_token
+                                fut_seg_debug = fut_seg
+
                                 # Fetch LTP
                                 q = client.quotes(instrument_tokens=[{"instrument_token": fut_token, "exchange_segment": fut_seg}], quote_type="ltp")
+                                q_debug = q
 
                                 # Mini-extractor
                                 def quick_extract(resp):
                                     if isinstance(resp, dict):
                                         for k,v in resp.items():
-                                            if str(k).strip().lower() in ['ltp', 'last_price', 'close']: return v
+                                            if str(k).strip().lower() in ['ltp', 'last_price', 'last_traded_price', 'close', 'lp']: return v
                                             if isinstance(v, (dict, list)):
                                                 r = quick_extract(v)
                                                 if r: return r
@@ -324,6 +331,12 @@ if 'client' in st.session_state:
                                 st.rerun()
                             else:
                                 st.warning("Could not fetch Reference Price (Future) to auto-select.")
+                                with st.expander("Show Debug Details"):
+                                    st.write(f"Token: {fut_token_debug}")
+                                    st.write(f"Segment: {fut_seg_debug}")
+                                    st.write("Full Response:", q_debug)
+                                    if not fut_subset.empty:
+                                        st.write("Selected Row:", fut_subset.iloc[0].to_dict())
 
                         except Exception as e:
                             st.error(f"Auto-select failed: {e}")
