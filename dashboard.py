@@ -3,6 +3,7 @@ import pandas as pd
 import sys
 import time
 from socket_manager import ws_manager # Import singleton
+from background_monitor import bg_monitor # Import singleton
 
 # Try to import NeoAPI
 try:
@@ -18,10 +19,6 @@ from logic import load_scrip_master, filter_data_for_indices, get_expiry_list, g
 
 # Page configuration
 st.set_page_config(page_title="Kotak Neo Quick Dashboard", layout="wide")
-
-# Session state initialization for Targets
-if 'targets' not in st.session_state:
-    st.session_state['targets'] = {}
 
 # Sidebar for Authentication
 with st.sidebar:
@@ -103,6 +100,11 @@ with st.sidebar:
                         # Success
                         st.session_state['client'] = client
                         st.session_state['ucc'] = ucc
+
+                        # Initialize Background Monitor
+                        bg_monitor.set_client(client)
+                        bg_monitor.start()
+
                         st.success("Logged in successfully!")
                         st.rerun()
             except Exception as e:
@@ -138,74 +140,15 @@ def modify_to_market(order_id, symbol, qty, trans_type, segment="nse_fo"):
         st.error(f"Exception modifying order: {e}")
         return False
 
-# Helper: Target Monitor
-def run_target_monitor():
-    if 'monitor_enabled' not in st.session_state or not st.session_state['monitor_enabled']:
-        return
-
-    # Check Targets logic
-    try:
-        client = st.session_state['client']
-        # Fetch pending orders
-        orders_resp = client.order_report()
-        if not orders_resp or 'data' not in orders_resp: return
-
-        orders = orders_resp['data']
-        # Filter pending
-        pending_orders = [o for o in orders if str(o.get('ordSt', '')).lower() in ['pending', 'open', 'trigger_pending', 'trig_pending', 'modified']]
-
-        targets = st.session_state.get('targets', {})
-
-        # 1. Ensure Subscription for all targets
-        tokens_to_sub = []
-        for o in pending_orders:
-            oid = str(o.get('nOrdNo'))
-            if oid in targets:
-                token = o.get('tok')
-                if token:
-                    tokens_to_sub.append(token)
-
-        if tokens_to_sub:
-            # Subscribe using WS Manager
-            ws_manager.subscribe(client, tokens_to_sub)
-
-        # 2. Check Targets using WS Data
-        for o in pending_orders:
-            oid = str(o.get('nOrdNo'))
-            if oid in targets:
-                target_price = float(targets[oid])
-                token = str(o.get('tok'))
-
-                # Get LTP from WS Manager
-                ltp = ws_manager.get_ltp(token)
-
-                if ltp is not None and ltp > 0:
-                    trans = o.get('trns', o.get('transaction_type', ''))
-                    # Check Logic
-                    # If SL-Sell (for Long Position): Trigger is below price. Target is above.
-                    # If LTP >= Target -> Hit.
-                    if trans == "S" or trans == "SELL":
-                        if ltp >= target_price:
-                            st.toast(f"Target Hit for {oid}! LTP: {ltp} >= {target_price}")
-                            modify_to_market(oid, o.get('trdSym'), o.get('qty'), trans)
-                            del st.session_state['targets'][oid] # Remove target
-
-                    # If SL-Buy (for Short Position): Trigger is above price. Target is below.
-                    # If LTP <= Target -> Hit.
-                    elif trans == "B" or trans == "BUY":
-                        if ltp <= target_price:
-                            st.toast(f"Target Hit for {oid}! LTP: {ltp} <= {target_price}")
-                            modify_to_market(oid, o.get('trdSym'), o.get('qty'), trans)
-                            del st.session_state['targets'][oid]
-
-    except Exception as e:
-        print(f"Monitor Error: {e}")
-
 # Main Content
 st.title("Kotak Neo Quick Options Dashboard")
 
 if 'client' in st.session_state:
     client = st.session_state['client']
+
+    # Ensure BG Monitor is connected and running (handles page refresh)
+    bg_monitor.set_client(client)
+    bg_monitor.start()
 
     st.success(f"Connected as {st.session_state.get('ucc', 'Unknown')}")
 
@@ -214,12 +157,8 @@ if 'client' in st.session_state:
         st.rerun()
 
     # --- Pending Orders Section ---
-    with st.expander("Pending Orders & Targets", expanded=False):
-        col_mon, col_ref = st.columns([2, 1])
-        with col_mon:
-            monitor_on = st.checkbox("Enable Auto-Target Monitor", key="monitor_enabled", help="Refreshes page periodically to check targets.")
-            if monitor_on:
-                st.caption("Method: WebSocket (Partial Refresh)")
+    with st.expander("Pending Orders & Targets", expanded=True):
+        col_ref = st.columns([1])[0]
         with col_ref:
             if st.button("Refresh Orders"):
                 st.rerun()
@@ -244,6 +183,7 @@ if 'client' in st.session_state:
                             typ = order.get('trns', order.get('transaction_type', '')) # B/S
                             qty = order.get('qty', order.get('quantity', 0))
                             prc = order.get('trigPrc', order.get('trigger_price', 0))
+                            token = order.get('tok')
 
                             # Row
                             c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 2, 2])
@@ -255,15 +195,36 @@ if 'client' in st.session_state:
                             with c3:
                                 if st.button("Exit MKT", key=f"exit_{oid}"):
                                     modify_to_market(oid, sym, qty, typ)
+                                    bg_monitor.remove_target(oid)
                                     st.rerun()
+
+                            # Check if monitored
+                            is_monitored = oid in bg_monitor.targets
+
                             with c4:
-                                # Target Input
-                                curr_target = st.session_state['targets'].get(oid, 0.0)
-                                new_target = st.number_input("Target", value=float(curr_target), key=f"tgt_in_{oid}", step=0.5)
+                                if is_monitored:
+                                    tgt = bg_monitor.targets[oid]['target']
+                                    st.info(f"Active Target: {tgt}")
+                                else:
+                                    # Target Input
+                                    st.number_input("Target", value=0.0, key=f"tgt_in_{oid}", step=0.5)
+
                             with c5:
-                                if st.button("Set Target", key=f"set_{oid}"):
-                                    st.session_state['targets'][oid] = new_target
-                                    st.success(f"Target set: {new_target}")
+                                if is_monitored:
+                                    if st.button("Cancel Monitor", key=f"cancel_{oid}"):
+                                        bg_monitor.remove_target(oid)
+                                        st.rerun()
+                                else:
+                                    if st.button("Set Target", key=f"set_{oid}"):
+                                        target_val = st.session_state.get(f"tgt_in_{oid}", 0.0)
+                                        if token and target_val > 0:
+                                            bg_monitor.add_target(oid, target_val, token, typ, sym, qty)
+                                            st.success(f"Monitoring {sym} @ {target_val}")
+                                            st.rerun()
+                                        elif target_val <= 0:
+                                            st.warning("Please set a valid target > 0")
+                                        else:
+                                            st.error("Token missing for order")
                             st.divider()
                     else:
                         st.info("No pending orders found.")
@@ -274,17 +235,7 @@ if 'client' in st.session_state:
             except Exception as e:
                 st.error(f"Error fetching orders: {e}")
 
-        # Define Fragment for Auto-Monitor
-        @st.fragment(run_every=1)
-        def monitor_fragment():
-            run_target_monitor()
-            render_pending_orders_ui()
-
-        # Conditional Rendering
-        if st.session_state.get('monitor_enabled'):
-             monitor_fragment()
-        else:
-             render_pending_orders_ui()
+        render_pending_orders_ui()
 
     # Fetch Scrip Master (F&O and Cash for Spot Indices)
     df_master = None

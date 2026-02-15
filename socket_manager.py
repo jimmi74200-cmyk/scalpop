@@ -35,11 +35,16 @@ class WebSocketManager:
         # Extract Token and LTP
         # Keys vary: 'tk', 'ltp' or 'instrument_token', 'last_traded_price'
         token = str(item.get('tk', item.get('instrument_token', '')))
-        ltp = item.get('lp', item.get('ltp', item.get('last_traded_price', 0)))
 
-        if token and ltp:
-            with self.lock:
-                self.latest_ltp[token] = float(ltp)
+        # LTP might be 'lp' or 'ltp' or 'last_traded_price'
+        ltp = item.get('lp', item.get('ltp', item.get('last_traded_price')))
+
+        if token and ltp is not None:
+            try:
+                with self.lock:
+                    self.latest_ltp[token] = float(ltp)
+            except ValueError:
+                pass
 
     def on_error(self, error):
         print(f"WS Error: {error}")
@@ -52,43 +57,34 @@ class WebSocketManager:
         print(f"WS Opened: {message}")
         self.is_running = True
 
-    def subscribe(self, client, tokens):
+    def subscribe(self, client, instruments):
         """
-        Subscribes to a list of tokens if not already subscribed.
+        Subscribes to a list of instruments.
+        instruments: list of dicts [{'instrument_token': '...', 'exchange_segment': '...'}]
         """
-        if not tokens:
+        if not instruments:
             return
 
-        # Identify new tokens
-        new_tokens = [str(t) for t in tokens if str(t) not in self.subscribed_tokens]
+        to_subscribe = []
+        with self.lock:
+            for inst in instruments:
+                t = str(inst.get('instrument_token'))
+                if t not in self.subscribed_tokens:
+                     to_subscribe.append(inst)
 
-        if new_tokens:
+        if to_subscribe:
             # Register callbacks if not already set or client changed
-            # Note: We overwrite client callbacks. Ideally client is singleton per user.
             client.on_message = self.on_message
             client.on_error = self.on_error
             client.on_open = self.on_open
             client.on_close = self.on_close
 
-            # Construct instrument_tokens list for API
-            # Format: [{"instrument_token": "token", "exchange_segment": "nse_fo"}]
-            # We assume nse_fo for simplicity or need to pass segment.
-            # However, logic.py and dashboard.py usually know the segment.
-            # For pure LTP monitoring of options, nse_fo is 99% likely.
-            # If we need multi-segment, we need to change input to tuples.
-
-            # The API requires a specific format.
-            # client.subscribe(instrument_tokens=[...])
-            # Let's assume standard format required by `subscribe` method.
-            # Looking at neo_api.py: subscribe takes `instrument_tokens` list.
-            # It passes it to NeoWebSocket.get_live_feed.
-
-            sub_list = [{"instrument_token": t, "exchange_segment": "nse_fo"} for t in new_tokens]
-
             try:
-                client.subscribe(instrument_tokens=sub_list)
+                # client.subscribe expects list of dicts
+                client.subscribe(instrument_tokens=to_subscribe)
                 with self.lock:
-                    self.subscribed_tokens.update(new_tokens)
+                    for inst in to_subscribe:
+                        self.subscribed_tokens.add(str(inst.get('instrument_token')))
             except Exception as e:
                 print(f"Subscribe Error: {e}")
 
