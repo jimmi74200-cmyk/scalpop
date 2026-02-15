@@ -589,8 +589,15 @@ if 'client' in st.session_state:
                             "amo": "NO"
                         }
 
+                        # Debug Entry Order
+                        with st.expander("Order Debug Details", expanded=True):
+                            st.write("Entry Order Args:", order_args)
+
                         # Call API for Entry
                         resp = client.place_order(**order_args)
+
+                        with st.expander("Order Debug Details", expanded=True):
+                            st.write("Entry Order Response:", resp)
 
                         if resp and 'nOrdNo' in resp: # Check for success key
                              st.success(f"Entry Order Placed! ID: {resp['nOrdNo']}")
@@ -646,7 +653,14 @@ if 'client' in st.session_state:
                                             "amo": "NO"
                                          }
 
+                                         with st.expander("Order Debug Details", expanded=True):
+                                             st.write("SL Order Args:", sl_args)
+
                                          sl_resp = client.place_order(**sl_args)
+
+                                         with st.expander("Order Debug Details", expanded=True):
+                                             st.write("SL Order Response:", sl_resp)
+
                                          if sl_resp and 'nOrdNo' in sl_resp:
                                              st.info(f"Stop Loss Limit Order Placed! ID: {sl_resp['nOrdNo']} Trigger: {trigger_price}, Limit: {sl_limit_price}")
                                          else:
