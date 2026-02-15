@@ -221,61 +221,68 @@ if 'client' in st.session_state:
         with col_mon:
             monitor_on = st.checkbox("Enable Auto-Target Monitor", key="monitor_enabled", help="Refreshes page periodically to check targets.")
             if monitor_on:
-                st.caption("Method: WebSocket (1s refresh)")
+                st.caption("Method: WebSocket (Partial Refresh)")
         with col_ref:
             if st.button("Refresh Orders"):
                 st.rerun()
 
-        # Fetch Orders
-        try:
-            orders_resp = client.order_report()
-            if orders_resp and 'data' in orders_resp:
-                all_orders = orders_resp['data']
-                # Filter for pending/trigger pending
-                # Note: Kotak keys might be 'ordSt' or 'order_status'. Trying standard API v2 keys.
-                # Assuming 'trig_pending' is the status for SL orders.
-                pending_orders = [
-                    o for o in all_orders
-                    if str(o.get('ordSt', o.get('order_status', ''))).lower() in ['trigger_pending', 'trig_pending', 'pending', 'open']
-                ]
+        # Container for partial updates
+        orders_container = st.empty()
 
-                if pending_orders:
-                    # Create UI for each order
-                    for order in pending_orders:
-                        oid = str(order.get('nOrdNo', order.get('order_id', 'Unknown')))
-                        sym = order.get('trdSym', order.get('trading_symbol', 'Unknown'))
-                        typ = order.get('trns', order.get('transaction_type', '')) # B/S
-                        qty = order.get('qty', order.get('quantity', 0))
-                        prc = order.get('trigPrc', order.get('trigger_price', 0))
+        def render_pending_orders():
+            # Fetch Orders
+            try:
+                orders_resp = client.order_report()
+                if orders_resp and 'data' in orders_resp:
+                    all_orders = orders_resp['data']
+                    pending_orders = [
+                        o for o in all_orders
+                        if str(o.get('ordSt', o.get('order_status', ''))).lower() in ['trigger_pending', 'trig_pending', 'pending', 'open']
+                    ]
 
-                        # Row
-                        c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 2, 2])
-                        with c1:
-                            st.write(f"**{sym}** ({typ})")
-                            st.caption(f"ID: {oid} | Qty: {qty}")
-                        with c2:
-                            st.write(f"Trig: {prc}")
-                        with c3:
-                            if st.button("Exit MKT", key=f"exit_{oid}"):
-                                modify_to_market(oid, sym, qty, typ)
-                                st.rerun()
-                        with c4:
-                            # Target Input
-                            curr_target = st.session_state['targets'].get(oid, 0.0)
-                            new_target = st.number_input("Target", value=float(curr_target), key=f"tgt_in_{oid}", step=0.5)
-                        with c5:
-                            if st.button("Set Target", key=f"set_{oid}"):
-                                st.session_state['targets'][oid] = new_target
-                                st.success(f"Target set: {new_target}")
-                        st.divider()
+                    with orders_container.container():
+                        if pending_orders:
+                            # Create UI for each order
+                            for order in pending_orders:
+                                oid = str(order.get('nOrdNo', order.get('order_id', 'Unknown')))
+                                sym = order.get('trdSym', order.get('trading_symbol', 'Unknown'))
+                                typ = order.get('trns', order.get('transaction_type', '')) # B/S
+                                qty = order.get('qty', order.get('quantity', 0))
+                                prc = order.get('trigPrc', order.get('trigger_price', 0))
+
+                                # Row
+                                c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 2, 2])
+                                with c1:
+                                    st.write(f"**{sym}** ({typ})")
+                                    st.caption(f"ID: {oid} | Qty: {qty}")
+                                with c2:
+                                    st.write(f"Trig: {prc}")
+                                with c3:
+                                    if st.button("Exit MKT", key=f"exit_{oid}"):
+                                        modify_to_market(oid, sym, qty, typ)
+                                        st.rerun()
+                                with c4:
+                                    # Target Input
+                                    curr_target = st.session_state['targets'].get(oid, 0.0)
+                                    new_target = st.number_input("Target", value=float(curr_target), key=f"tgt_in_{oid}", step=0.5)
+                                with c5:
+                                    if st.button("Set Target", key=f"set_{oid}"):
+                                        st.session_state['targets'][oid] = new_target
+                                        st.success(f"Target set: {new_target}")
+                                st.divider()
+                        else:
+                            st.info("No pending orders found.")
                 else:
-                    st.info("No pending orders found.")
-            else:
-                st.info("No orders found or error fetching.")
-                if st.checkbox("Show Raw Order Response"):
-                    st.write(orders_resp)
-        except Exception as e:
-            st.error(f"Error fetching orders: {e}")
+                    with orders_container.container():
+                        st.info("No orders found or error fetching.")
+                        if st.checkbox("Show Raw Order Response"):
+                            st.write(orders_resp)
+            except Exception as e:
+                with orders_container.container():
+                    st.error(f"Error fetching orders: {e}")
+
+        # Render once initially
+        render_pending_orders()
 
     # Fetch Scrip Master (F&O and Cash for Spot Indices)
     df_master = None
@@ -861,9 +868,13 @@ if 'client' in st.session_state:
             if st.checkbox("Show Error Details"):
                  st.write(e)
 
-    # Auto Refresh Logic
+    # Auto Refresh Logic (Partial Update Loop)
     if st.session_state.get('monitor_enabled'):
-        time.sleep(1) # Wait 1 second for faster updates
+        # Check targets
+        run_target_monitor()
+        # Re-render only pending orders section if needed
+        render_pending_orders()
+        time.sleep(1)
         st.rerun()
 
 else:
