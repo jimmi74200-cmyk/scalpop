@@ -278,15 +278,46 @@ if 'client' in st.session_state:
             # UI Layout
             col1, col2 = st.columns(2)
 
+            # Update functions for Shadow State
+            def update_saved_symbol():
+                if 'symbol_select' in st.session_state:
+                    st.session_state['saved_symbol'] = st.session_state['symbol_select']
+
+            def update_saved_expiry():
+                 if 'expiry_select' in st.session_state:
+                    st.session_state['saved_expiry'] = st.session_state['expiry_select']
+
             with col1:
                 # Symbol Selection
                 available_symbols = sorted(df_indices['symbol'].unique()) if 'symbol' in df_indices.columns else []
-                symbol = st.selectbox("Symbol", available_symbols, index=0 if available_symbols else None)
+
+                # Determine Index
+                sym_idx = 0
+                saved_sym = st.session_state.get('saved_symbol')
+                if saved_sym and saved_sym in available_symbols:
+                    sym_idx = available_symbols.index(saved_sym)
+
+                symbol = st.selectbox("Symbol", available_symbols, index=sym_idx, key="symbol_select", on_change=update_saved_symbol)
+
+                # Force sync if mismatch (e.g. first run or reset)
+                if st.session_state.get('saved_symbol') != symbol:
+                     st.session_state['saved_symbol'] = symbol
 
             with col2:
                 # Expiry Selection
                 expiries = get_expiry_list(df_indices, symbol)
-                expiry = st.selectbox("Expiry", expiries, index=0 if expiries else None)
+
+                # Determine Index
+                exp_idx = 0
+                saved_exp = st.session_state.get('saved_expiry')
+                if saved_exp and saved_exp in expiries:
+                    exp_idx = expiries.index(saved_exp)
+
+                expiry = st.selectbox("Expiry", expiries, index=exp_idx, key="expiry_select", on_change=update_saved_expiry)
+
+                # Force sync
+                if st.session_state.get('saved_expiry') != expiry:
+                     st.session_state['saved_expiry'] = expiry
 
             # Strikes Row
             if symbol and expiry:
