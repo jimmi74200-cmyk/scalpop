@@ -206,9 +206,12 @@ def filter_data_for_indices(df, symbols=None):
 
                          # If median year is suspiciously old (more than 1 year ago)
                          if median_year < (current_year - 1):
+                             # Calculate offset in years
                              offset_years = current_year - median_year
-                             offset_seconds = offset_years * 31557600 # 365.25 days
-                             dates = dates + pd.to_timedelta(offset_seconds, unit='s')
+
+                             # Apply offset using DateOffset to handle leap years correctly
+                             # We apply to the whole series
+                             dates = dates + pd.DateOffset(years=int(offset_years))
 
                      df_filtered['expiry'] = dates.dt.strftime('%d%b%Y').str.upper()
             except Exception:
