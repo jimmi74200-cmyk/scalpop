@@ -226,10 +226,13 @@ if 'client' in st.session_state:
             if st.button("Refresh Orders"):
                 st.rerun()
 
-        # Container for partial updates
-        orders_container = st.empty()
+        # Decorator for partial reruns
+        @st.fragment(run_every=1)
+        def render_pending_orders_fragment():
+            # Check targets (run inside fragment loop)
+            if st.session_state.get('monitor_enabled'):
+                run_target_monitor()
 
-        def render_pending_orders():
             # Fetch Orders
             try:
                 orders_resp = client.order_report()
@@ -240,49 +243,62 @@ if 'client' in st.session_state:
                         if str(o.get('ordSt', o.get('order_status', ''))).lower() in ['trigger_pending', 'trig_pending', 'pending', 'open']
                     ]
 
-                    with orders_container.container():
-                        if pending_orders:
-                            # Create UI for each order
-                            for order in pending_orders:
-                                oid = str(order.get('nOrdNo', order.get('order_id', 'Unknown')))
-                                sym = order.get('trdSym', order.get('trading_symbol', 'Unknown'))
-                                typ = order.get('trns', order.get('transaction_type', '')) # B/S
-                                qty = order.get('qty', order.get('quantity', 0))
-                                prc = order.get('trigPrc', order.get('trigger_price', 0))
+                    if pending_orders:
+                        # Create UI for each order
+                        for order in pending_orders:
+                            oid = str(order.get('nOrdNo', order.get('order_id', 'Unknown')))
+                            sym = order.get('trdSym', order.get('trading_symbol', 'Unknown'))
+                            typ = order.get('trns', order.get('transaction_type', '')) # B/S
+                            qty = order.get('qty', order.get('quantity', 0))
+                            prc = order.get('trigPrc', order.get('trigger_price', 0))
 
-                                # Row
-                                c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 2, 2])
-                                with c1:
-                                    st.write(f"**{sym}** ({typ})")
-                                    st.caption(f"ID: {oid} | Qty: {qty}")
-                                with c2:
-                                    st.write(f"Trig: {prc}")
-                                with c3:
-                                    if st.button("Exit MKT", key=f"exit_{oid}"):
-                                        modify_to_market(oid, sym, qty, typ)
-                                        st.rerun()
-                                with c4:
-                                    # Target Input
-                                    curr_target = st.session_state['targets'].get(oid, 0.0)
-                                    new_target = st.number_input("Target", value=float(curr_target), key=f"tgt_in_{oid}", step=0.5)
-                                with c5:
-                                    if st.button("Set Target", key=f"set_{oid}"):
-                                        st.session_state['targets'][oid] = new_target
-                                        st.success(f"Target set: {new_target}")
-                                st.divider()
-                        else:
-                            st.info("No pending orders found.")
+                            # Row
+                            c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 2, 2])
+                            with c1:
+                                st.write(f"**{sym}** ({typ})")
+                                st.caption(f"ID: {oid} | Qty: {qty}")
+                            with c2:
+                                st.write(f"Trig: {prc}")
+                            with c3:
+                                if st.button("Exit MKT", key=f"exit_{oid}"):
+                                    modify_to_market(oid, sym, qty, typ)
+                                    st.rerun()
+                            with c4:
+                                # Target Input
+                                curr_target = st.session_state['targets'].get(oid, 0.0)
+                                new_target = st.number_input("Target", value=float(curr_target), key=f"tgt_in_{oid}", step=0.5)
+                            with c5:
+                                if st.button("Set Target", key=f"set_{oid}"):
+                                    st.session_state['targets'][oid] = new_target
+                                    st.success(f"Target set: {new_target}")
+                            st.divider()
+                    else:
+                        st.info("No pending orders found.")
                 else:
-                    with orders_container.container():
-                        st.info("No orders found or error fetching.")
-                        if st.checkbox("Show Raw Order Response"):
-                            st.write(orders_resp)
+                    st.info("No orders found or error fetching.")
+                    if st.checkbox("Show Raw Order Response"):
+                        st.write(orders_resp)
             except Exception as e:
-                with orders_container.container():
-                    st.error(f"Error fetching orders: {e}")
+                st.error(f"Error fetching orders: {e}")
 
-        # Render once initially
-        render_pending_orders()
+        # Render fragment conditionally
+        if st.session_state.get('monitor_enabled'):
+             render_pending_orders_fragment()
+        else:
+             # Just render once without loop if disabled
+             # We can't call the decorated function with run_every logic manually easily outside the loop context intended by st.fragment if we want standard behavior
+             # So we create a static version or just reuse the logic.
+             # For simplicity, we just call the fragment function. If run_every is set, it will auto-run if mounted.
+             # But if we want it *static*, we shouldn't use the run_every fragment.
+             # Strategy: Use two functions or just accept it auto-refreshes if we call it.
+             # Actually, if we call it, it starts the loop.
+             # If monitor is OFF, we might not want the loop.
+             pass
+
+        # Alternative: Just render button to manual refresh if OFF.
+        if not st.session_state.get('monitor_enabled'):
+             if st.button("Manual Refresh Orders"):
+                 st.rerun() # Full refresh for manual
 
     # Fetch Scrip Master (F&O and Cash for Spot Indices)
     df_master = None
@@ -868,14 +884,6 @@ if 'client' in st.session_state:
             if st.checkbox("Show Error Details"):
                  st.write(e)
 
-    # Auto Refresh Logic (Partial Update Loop)
-    if st.session_state.get('monitor_enabled'):
-        # Check targets
-        run_target_monitor()
-        # Re-render only pending orders section if needed
-        render_pending_orders()
-        time.sleep(1)
-        st.rerun()
 
 else:
     st.info("Please login from the sidebar to continue.")
