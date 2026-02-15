@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import sys
 import time
+from socket_manager import ws_manager # Import singleton
 
 # Try to import NeoAPI
 try:
@@ -155,29 +156,30 @@ def run_target_monitor():
 
         targets = st.session_state.get('targets', {})
 
+        # 1. Ensure Subscription for all targets
+        tokens_to_sub = []
+        for o in pending_orders:
+            oid = str(o.get('nOrdNo'))
+            if oid in targets:
+                token = o.get('tok')
+                if token:
+                    tokens_to_sub.append(token)
+
+        if tokens_to_sub:
+            # Subscribe using WS Manager
+            ws_manager.subscribe(client, tokens_to_sub)
+
+        # 2. Check Targets using WS Data
         for o in pending_orders:
             oid = str(o.get('nOrdNo'))
             if oid in targets:
                 target_price = float(targets[oid])
-                token = o.get('tok')
-                segment = "nse_fo" # default
-                # try determine segment if not present
+                token = str(o.get('tok'))
 
-                # Fetch LTP
-                q = client.quotes(instrument_tokens=[{"instrument_token": str(token), "exchange_segment": segment}], quote_type="ltp")
+                # Get LTP from WS Manager
+                ltp = ws_manager.get_ltp(token)
 
-                # Extract LTP
-                ltp = 0.0
-                if isinstance(q, dict):
-                    # quick extract
-                    for k, v in q.items():
-                         if str(k).lower() in ['ltp', 'last_price']:
-                             ltp = float(v)
-                             break
-                    if ltp == 0 and 'data' in q and isinstance(q['data'], list) and len(q['data']) > 0:
-                         ltp = float(q['data'][0].get('last_price', 0))
-
-                if ltp > 0:
+                if ltp is not None and ltp > 0:
                     trans = o.get('trns', o.get('transaction_type', ''))
                     # Check Logic
                     # If SL-Sell (for Long Position): Trigger is below price. Target is above.
@@ -219,7 +221,7 @@ if 'client' in st.session_state:
         with col_mon:
             monitor_on = st.checkbox("Enable Auto-Target Monitor", key="monitor_enabled", help="Refreshes page periodically to check targets.")
             if monitor_on:
-                st.caption("Method: REST API Polling (1s)")
+                st.caption("Method: WebSocket (1s refresh)")
         with col_ref:
             if st.button("Refresh Orders"):
                 st.rerun()
