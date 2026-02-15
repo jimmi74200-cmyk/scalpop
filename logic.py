@@ -3,6 +3,7 @@ import streamlit as st
 import requests
 import io
 import warnings
+import datetime
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 
 # Suppress only the single warning from urllib3 needed.
@@ -248,13 +249,30 @@ def get_expiry_list(df, symbol):
     expiries = subset['expiry'].unique()
 
     try:
-        # Try converting to datetime for sorting if it looks like a date
-        # Assuming format might be DDMMMYYYY
-        expiries = sorted(expiries, key=lambda x: pd.to_datetime(x, dayfirst=True, errors='ignore'))
-    except:
-        expiries = sorted(expiries)
+        # Convert to datetime objects for accurate sorting
+        # Try DDMMMYYYY format
+        dt_expiries = pd.to_datetime(expiries, format='%d%b%Y', errors='coerce')
 
-    return expiries
+        # Create a dataframe for sorting
+        temp_df = pd.DataFrame({'str_expiry': expiries, 'dt_expiry': dt_expiries})
+
+        # Filter valid dates
+        temp_df = temp_df.dropna(subset=['dt_expiry'])
+
+        # Filter for future dates (including today)
+        today = pd.Timestamp.now().normalize()
+        temp_df = temp_df[temp_df['dt_expiry'] >= today]
+
+        # Sort chronologically
+        temp_df = temp_df.sort_values('dt_expiry')
+
+        # Return sorted string list
+        return temp_df['str_expiry'].tolist()
+
+    except Exception as e:
+        # Fallback to simple sort if parsing fails
+        print(f"Expiry sort error: {e}")
+        return sorted(expiries)
 
 def get_strikes(df, symbol, expiry):
     if df is None:
