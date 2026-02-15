@@ -226,13 +226,8 @@ if 'client' in st.session_state:
             if st.button("Refresh Orders"):
                 st.rerun()
 
-        # Decorator for partial reruns
-        @st.fragment(run_every=1)
-        def render_pending_orders_fragment():
-            # Check targets (run inside fragment loop)
-            if st.session_state.get('monitor_enabled'):
-                run_target_monitor()
-
+        # Define core rendering logic (UI only)
+        def render_pending_orders_ui():
             # Fetch Orders
             try:
                 orders_resp = client.order_report()
@@ -281,24 +276,17 @@ if 'client' in st.session_state:
             except Exception as e:
                 st.error(f"Error fetching orders: {e}")
 
-        # Render fragment conditionally
-        if st.session_state.get('monitor_enabled'):
-             render_pending_orders_fragment()
-        else:
-             # Just render once without loop if disabled
-             # We can't call the decorated function with run_every logic manually easily outside the loop context intended by st.fragment if we want standard behavior
-             # So we create a static version or just reuse the logic.
-             # For simplicity, we just call the fragment function. If run_every is set, it will auto-run if mounted.
-             # But if we want it *static*, we shouldn't use the run_every fragment.
-             # Strategy: Use two functions or just accept it auto-refreshes if we call it.
-             # Actually, if we call it, it starts the loop.
-             # If monitor is OFF, we might not want the loop.
-             pass
+        # Define Fragment for Auto-Monitor
+        @st.fragment(run_every=1)
+        def monitor_fragment():
+            run_target_monitor()
+            render_pending_orders_ui()
 
-        # Alternative: Just render button to manual refresh if OFF.
-        if not st.session_state.get('monitor_enabled'):
-             if st.button("Manual Refresh Orders"):
-                 st.rerun() # Full refresh for manual
+        # Conditional Rendering
+        if st.session_state.get('monitor_enabled'):
+             monitor_fragment()
+        else:
+             render_pending_orders_ui()
 
     # Fetch Scrip Master (F&O and Cash for Spot Indices)
     df_master = None
