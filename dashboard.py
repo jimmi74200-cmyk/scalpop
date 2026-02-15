@@ -342,8 +342,9 @@ if 'client' in st.session_state:
                                 ce_idx = max(0, min(len(strikes)-1, closest_idx + ce_offset))
                                 pe_idx = max(0, min(len(strikes)-1, closest_idx + pe_offset))
 
-                                st.session_state['ce_idx_val'] = ce_idx
-                                st.session_state['pe_idx_val'] = pe_idx
+                                # Store selected strike values instead of indices
+                                st.session_state['ce_selected_strike'] = strikes[ce_idx]
+                                st.session_state['pe_selected_strike'] = strikes[pe_idx]
                                 st.rerun()
                             else:
                                 st.warning("Could not fetch Reference Price (Future) to auto-select.")
@@ -394,12 +395,47 @@ if 'client' in st.session_state:
 
                     return "N/A"
 
-                with col3:
-                    # Determine default index
-                    ce_def_idx = st.session_state.get('ce_idx_val', len(strikes)//2 if strikes else 0)
-                    if ce_def_idx >= len(strikes): ce_def_idx = 0
+                # Helper to filter strikes around a target
+                def get_filtered_strikes(all_strikes, target_strike, window=20):
+                    if not all_strikes: return [], 0
+                    if target_strike not in all_strikes:
+                        # Find closest if target not in list
+                        closest = min(all_strikes, key=lambda x: abs(x - target_strike))
+                        target_index = all_strikes.index(closest)
+                    else:
+                        target_index = all_strikes.index(target_strike)
 
-                    ce_strike = st.selectbox("CE Strike", strikes, index=ce_def_idx, format_func=lambda x: f"{float(x):g}", key="ce_strike_box")
+                    start_idx = max(0, target_index - window)
+                    end_idx = min(len(all_strikes), target_index + window + 1)
+
+                    subset = all_strikes[start_idx:end_idx]
+                    # New index of target in subset
+                    if target_strike in subset:
+                        new_index = subset.index(target_strike)
+                    else:
+                         # Should ideally exist if logic is correct, fallback to middle
+                         new_index = len(subset) // 2
+
+                    return subset, new_index
+
+                with col3:
+                    # Determine current CE target
+                    # 1. Check if user manually selected one (in session state via key)
+                    current_ce_target = st.session_state.get('ce_strike_box')
+
+                    # 2. If not, check if we have a refresh-set value
+                    if current_ce_target is None or current_ce_target not in strikes:
+                        current_ce_target = st.session_state.get('ce_selected_strike')
+
+                    # 3. Fallback to middle
+                    if current_ce_target is None or current_ce_target not in strikes:
+                         if strikes:
+                             current_ce_target = strikes[len(strikes)//2]
+
+                    # Filter list
+                    ce_strikes_subset, ce_subset_idx = get_filtered_strikes(strikes, current_ce_target)
+
+                    ce_strike = st.selectbox("CE Strike", ce_strikes_subset, index=ce_subset_idx, format_func=lambda x: f"{float(x):g}", key="ce_strike_box")
                     # Get LTP for CE
                     ce_token, ce_seg = get_token_and_segment(df_indices, symbol, expiry, ce_strike, "CE")
                     ce_ltp = "Loading..."
@@ -424,10 +460,20 @@ if 'client' in st.session_state:
                     st.metric("CE LTP", ce_ltp)
 
                 with col4:
-                    pe_def_idx = st.session_state.get('pe_idx_val', len(strikes)//2 if strikes else 0)
-                    if pe_def_idx >= len(strikes): pe_def_idx = 0
+                    # Determine current PE target
+                    current_pe_target = st.session_state.get('pe_strike_box')
 
-                    pe_strike = st.selectbox("PE Strike", strikes, index=pe_def_idx, format_func=lambda x: f"{float(x):g}", key="pe_strike_box")
+                    if current_pe_target is None or current_pe_target not in strikes:
+                        current_pe_target = st.session_state.get('pe_selected_strike')
+
+                    if current_pe_target is None or current_pe_target not in strikes:
+                         if strikes:
+                             current_pe_target = strikes[len(strikes)//2]
+
+                    # Filter list
+                    pe_strikes_subset, pe_subset_idx = get_filtered_strikes(strikes, current_pe_target)
+
+                    pe_strike = st.selectbox("PE Strike", pe_strikes_subset, index=pe_subset_idx, format_func=lambda x: f"{float(x):g}", key="pe_strike_box")
                     # Get LTP for PE
                     pe_token, pe_seg = get_token_and_segment(df_indices, symbol, expiry, pe_strike, "PE")
                     pe_ltp = "Loading..."
