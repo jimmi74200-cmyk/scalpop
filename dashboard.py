@@ -396,12 +396,21 @@ if 'client' in st.session_state:
                     return "N/A"
 
                 # Helper to filter strikes around a target
-                def get_filtered_strikes(all_strikes, target_strike, window=20):
+                def get_filtered_strikes(all_strikes, target_strike, window=30):
                     if not all_strikes: return [], 0
+
+                    # Ensure all_strikes is sorted, though get_strikes does it, just in case
+                    all_strikes = sorted(all_strikes)
+
                     if target_strike not in all_strikes:
-                        # Find closest if target not in list
-                        closest = min(all_strikes, key=lambda x: abs(x - target_strike))
-                        target_index = all_strikes.index(closest)
+                        # Find closest if target not in list (handling float/int mismatches)
+                        try:
+                            closest = min(all_strikes, key=lambda x: abs(x - target_strike))
+                            target_index = all_strikes.index(closest)
+                            # Update target_strike to the found closest match for consistent subset logic
+                            target_strike = closest
+                        except ValueError:
+                             target_index = len(all_strikes) // 2
                     else:
                         target_index = all_strikes.index(target_strike)
 
@@ -409,11 +418,11 @@ if 'client' in st.session_state:
                     end_idx = min(len(all_strikes), target_index + window + 1)
 
                     subset = all_strikes[start_idx:end_idx]
+
                     # New index of target in subset
-                    if target_strike in subset:
+                    try:
                         new_index = subset.index(target_strike)
-                    else:
-                         # Should ideally exist if logic is correct, fallback to middle
+                    except ValueError:
                          new_index = len(subset) // 2
 
                     return subset, new_index
@@ -432,8 +441,19 @@ if 'client' in st.session_state:
                          if strikes:
                              current_ce_target = strikes[len(strikes)//2]
 
-                    # Filter list
-                    ce_strikes_subset, ce_subset_idx = get_filtered_strikes(strikes, current_ce_target)
+                    # Option to show full list
+                    show_full_ce = st.checkbox("Show All CE Strikes", key="show_full_ce")
+
+                    if show_full_ce:
+                         ce_strikes_subset = strikes
+                         try:
+                             ce_subset_idx = strikes.index(current_ce_target) if current_ce_target in strikes else 0
+                         except: ce_subset_idx = 0
+                    else:
+                        # Filter list
+                        ce_strikes_subset, ce_subset_idx = get_filtered_strikes(strikes, current_ce_target, window=30)
+                        if ce_strikes_subset:
+                             st.caption(f"Showing {ce_strikes_subset[0]} to {ce_strikes_subset[-1]}")
 
                     ce_strike = st.selectbox("CE Strike", ce_strikes_subset, index=ce_subset_idx, format_func=lambda x: f"{float(x):g}", key="ce_strike_box")
                     # Get LTP for CE
@@ -470,8 +490,19 @@ if 'client' in st.session_state:
                          if strikes:
                              current_pe_target = strikes[len(strikes)//2]
 
-                    # Filter list
-                    pe_strikes_subset, pe_subset_idx = get_filtered_strikes(strikes, current_pe_target)
+                    # Option to show full list
+                    show_full_pe = st.checkbox("Show All PE Strikes", key="show_full_pe")
+
+                    if show_full_pe:
+                         pe_strikes_subset = strikes
+                         try:
+                             pe_subset_idx = strikes.index(current_pe_target) if current_pe_target in strikes else 0
+                         except: pe_subset_idx = 0
+                    else:
+                        # Filter list
+                        pe_strikes_subset, pe_subset_idx = get_filtered_strikes(strikes, current_pe_target, window=30)
+                        if pe_strikes_subset:
+                             st.caption(f"Showing {pe_strikes_subset[0]} to {pe_strikes_subset[-1]}")
 
                     pe_strike = st.selectbox("PE Strike", pe_strikes_subset, index=pe_subset_idx, format_func=lambda x: f"{float(x):g}", key="pe_strike_box")
                     # Get LTP for PE
