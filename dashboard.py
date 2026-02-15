@@ -427,6 +427,33 @@ if 'client' in st.session_state:
 
                     return subset, new_index
 
+                # Helper to update strike via button callback
+                def shift_strike(key, strikes_list, direction):
+                    # Get current value from session state
+                    current_val = st.session_state.get(key)
+
+                    # Find current index
+                    try:
+                        if current_val in strikes_list:
+                            curr_idx = strikes_list.index(current_val)
+                        else:
+                            # If somehow value mismatch, find closest
+                            closest = min(strikes_list, key=lambda x: abs(x - float(current_val or 0)))
+                            curr_idx = strikes_list.index(closest)
+
+                        # Calculate new index
+                        new_idx = max(0, min(len(strikes_list)-1, curr_idx + direction))
+                        st.session_state[key] = strikes_list[new_idx]
+
+                        # Also update shadow selection if we use it
+                        if key == 'ce_strike_box':
+                            st.session_state['ce_selected_strike'] = strikes_list[new_idx]
+                        elif key == 'pe_strike_box':
+                            st.session_state['pe_selected_strike'] = strikes_list[new_idx]
+
+                    except Exception as ex:
+                        pass # Ignore if something goes wrong during callback
+
                 with col3:
                     # Determine current CE target
                     # 1. Check if user manually selected one (in session state via key)
@@ -441,21 +468,17 @@ if 'client' in st.session_state:
                          if strikes:
                              current_ce_target = strikes[len(strikes)//2]
 
-                    # Option to show full list
-                    show_full_ce = st.checkbox("Show All CE Strikes", key="show_full_ce")
+                    # 4. Filter list centered on target
+                    ce_strikes_subset, ce_subset_idx = get_filtered_strikes(strikes, current_ce_target, window=30)
 
-                    if show_full_ce:
-                         ce_strikes_subset = strikes
-                         try:
-                             ce_subset_idx = strikes.index(current_ce_target) if current_ce_target in strikes else 0
-                         except: ce_subset_idx = 0
-                    else:
-                        # Filter list
-                        ce_strikes_subset, ce_subset_idx = get_filtered_strikes(strikes, current_ce_target, window=30)
-                        if ce_strikes_subset:
-                             st.caption(f"Showing {ce_strikes_subset[0]} to {ce_strikes_subset[-1]}")
-
-                    ce_strike = st.selectbox("CE Strike", ce_strikes_subset, index=ce_subset_idx, format_func=lambda x: f"{float(x):g}", key="ce_strike_box")
+                    # 5. Render Buttons and Dropdown
+                    cc1, cc2, cc3 = st.columns([1, 4, 1])
+                    with cc1:
+                        st.button("➖", key="ce_minus", help="Shift Strike Down", on_click=shift_strike, args=('ce_strike_box', strikes, -1))
+                    with cc2:
+                        ce_strike = st.selectbox("CE Strike", ce_strikes_subset, index=ce_subset_idx, format_func=lambda x: f"{float(x):g}", key="ce_strike_box")
+                    with cc3:
+                        st.button("➕", key="ce_plus", help="Shift Strike Up", on_click=shift_strike, args=('ce_strike_box', strikes, 1))
                     # Get LTP for CE
                     ce_token, ce_seg = get_token_and_segment(df_indices, symbol, expiry, ce_strike, "CE")
                     ce_ltp = "Loading..."
@@ -490,21 +513,17 @@ if 'client' in st.session_state:
                          if strikes:
                              current_pe_target = strikes[len(strikes)//2]
 
-                    # Option to show full list
-                    show_full_pe = st.checkbox("Show All PE Strikes", key="show_full_pe")
+                    # 4. Filter list centered on target
+                    pe_strikes_subset, pe_subset_idx = get_filtered_strikes(strikes, current_pe_target, window=30)
 
-                    if show_full_pe:
-                         pe_strikes_subset = strikes
-                         try:
-                             pe_subset_idx = strikes.index(current_pe_target) if current_pe_target in strikes else 0
-                         except: pe_subset_idx = 0
-                    else:
-                        # Filter list
-                        pe_strikes_subset, pe_subset_idx = get_filtered_strikes(strikes, current_pe_target, window=30)
-                        if pe_strikes_subset:
-                             st.caption(f"Showing {pe_strikes_subset[0]} to {pe_strikes_subset[-1]}")
-
-                    pe_strike = st.selectbox("PE Strike", pe_strikes_subset, index=pe_subset_idx, format_func=lambda x: f"{float(x):g}", key="pe_strike_box")
+                    # 5. Render Buttons and Dropdown
+                    pc1, pc2, pc3 = st.columns([1, 4, 1])
+                    with pc1:
+                        st.button("➖", key="pe_minus", help="Shift Strike Down", on_click=shift_strike, args=('pe_strike_box', strikes, -1))
+                    with pc2:
+                        pe_strike = st.selectbox("PE Strike", pe_strikes_subset, index=pe_subset_idx, format_func=lambda x: f"{float(x):g}", key="pe_strike_box")
+                    with pc3:
+                        st.button("➕", key="pe_plus", help="Shift Strike Up", on_click=shift_strike, args=('pe_strike_box', strikes, 1))
                     # Get LTP for PE
                     pe_token, pe_seg = get_token_and_segment(df_indices, symbol, expiry, pe_strike, "PE")
                     pe_ltp = "Loading..."
