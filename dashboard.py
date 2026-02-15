@@ -282,6 +282,11 @@ if 'client' in st.session_state:
             def update_saved_symbol():
                 if 'symbol_select' in st.session_state:
                     st.session_state['saved_symbol'] = st.session_state['symbol_select']
+                    # Clear saved expiry when symbol changes to force reset to nearest
+                    if 'saved_expiry' in st.session_state:
+                        del st.session_state['saved_expiry']
+                    if 'expiry_select' in st.session_state:
+                        del st.session_state['expiry_select']
 
             def update_saved_expiry():
                  if 'expiry_select' in st.session_state:
@@ -297,11 +302,16 @@ if 'client' in st.session_state:
                 if saved_sym and saved_sym in available_symbols:
                     sym_idx = available_symbols.index(saved_sym)
 
+                # We need to detect change BEFORE the callback effectively for the reset logic
+                # But callback is safer.
+
                 symbol = st.selectbox("Symbol", available_symbols, index=sym_idx, key="symbol_select", on_change=update_saved_symbol)
 
                 # Force sync if mismatch (e.g. first run or reset)
                 if st.session_state.get('saved_symbol') != symbol:
                      st.session_state['saved_symbol'] = symbol
+                     # Also clear expiry if we force sync (meaning it changed)
+                     if 'saved_expiry' in st.session_state: del st.session_state['saved_expiry']
 
             with col2:
                 # Expiry Selection
@@ -496,6 +506,15 @@ if 'client' in st.session_state:
                                 # Store selected strike values instead of indices
                                 st.session_state['ce_selected_strike'] = strikes[ce_idx]
                                 st.session_state['pe_selected_strike'] = strikes[pe_idx]
+
+                                # FORCE UPDATE SHADOW STATE for Re-Render Priority
+                                st.session_state['saved_ce_strike'] = strikes[ce_idx]
+                                st.session_state['saved_pe_strike'] = strikes[pe_idx]
+
+                                # Force update keys for widgets
+                                if 'ce_strike_box' in st.session_state: st.session_state['ce_strike_box'] = strikes[ce_idx]
+                                if 'pe_strike_box' in st.session_state: st.session_state['pe_strike_box'] = strikes[pe_idx]
+
                                 st.rerun()
                             else:
                                 st.warning("Could not fetch Reference Price (Future) to auto-select.")
