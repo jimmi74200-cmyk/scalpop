@@ -207,8 +207,6 @@ st.title("Kotak Neo Quick Options Dashboard")
 if 'client' in st.session_state:
     client = st.session_state['client']
 
-    # Run Monitor Check (Simulated background task on refresh)
-    run_target_monitor()
     st.success(f"Connected as {st.session_state.get('ucc', 'Unknown')}")
 
     if st.button("Logout"):
