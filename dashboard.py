@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import sys
+import time
 
 # Try to import NeoAPI
 try:
@@ -16,6 +17,10 @@ from logic import load_scrip_master, filter_data_for_indices, get_expiry_list, g
 
 # Page configuration
 st.set_page_config(page_title="Kotak Neo Quick Dashboard", layout="wide")
+
+# Session state initialization for Targets
+if 'targets' not in st.session_state:
+    st.session_state['targets'] = {}
 
 # Sidebar for Authentication
 with st.sidebar:
@@ -102,16 +107,171 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"Login process failed: {e}")
 
+# Helper: Modify SL Order to Market
+def modify_to_market(order_id, symbol, qty, trans_type, segment="nse_fo"):
+    try:
+        # According to API v2 docs (inferred), modify usually takes params
+        # To exit at market, we change order type to MKT and price/trigger to 0
+        mod_args = {
+            "order_id": str(order_id),
+            "order_type": "MKT",
+            "quantity": str(qty),
+            "price": "0",
+            "trigger_price": "0",
+            "validity": "DAY",
+            "exchange_segment": segment,
+            "product": "MIS", # Assuming MIS for intraday
+            "trading_symbol": symbol,
+            "transaction_type": trans_type
+        }
+
+        # Call modify
+        resp = st.session_state['client'].modify_order(**mod_args)
+        if resp and 'nOrdNo' in resp:
+            st.toast(f"Order {order_id} modified to Market Exit!")
+            return True
+        else:
+            st.error(f"Modify Failed: {resp}")
+            return False
+    except Exception as e:
+        st.error(f"Exception modifying order: {e}")
+        return False
+
+# Helper: Target Monitor
+def run_target_monitor():
+    if 'monitor_enabled' not in st.session_state or not st.session_state['monitor_enabled']:
+        return
+
+    # Check Targets logic
+    try:
+        client = st.session_state['client']
+        # Fetch pending orders
+        orders_resp = client.order_report()
+        if not orders_resp or 'data' not in orders_resp: return
+
+        orders = orders_resp['data']
+        # Filter pending
+        pending_orders = [o for o in orders if str(o.get('ordSt', '')).lower() in ['pending', 'open', 'trigger_pending', 'trig_pending', 'modified']]
+
+        targets = st.session_state.get('targets', {})
+
+        for o in pending_orders:
+            oid = str(o.get('nOrdNo'))
+            if oid in targets:
+                target_price = float(targets[oid])
+                token = o.get('tok')
+                segment = "nse_fo" # default
+                # try determine segment if not present
+
+                # Fetch LTP
+                q = client.quotes(instrument_tokens=[{"instrument_token": str(token), "exchange_segment": segment}], quote_type="ltp")
+
+                # Extract LTP
+                ltp = 0.0
+                if isinstance(q, dict):
+                    # quick extract
+                    for k, v in q.items():
+                         if str(k).lower() in ['ltp', 'last_price']:
+                             ltp = float(v)
+                             break
+                    if ltp == 0 and 'data' in q and isinstance(q['data'], list) and len(q['data']) > 0:
+                         ltp = float(q['data'][0].get('last_price', 0))
+
+                if ltp > 0:
+                    trans = o.get('trns', o.get('transaction_type', ''))
+                    # Check Logic
+                    # If SL-Sell (for Long Position): Trigger is below price. Target is above.
+                    # If LTP >= Target -> Hit.
+                    if trans == "S" or trans == "SELL":
+                        if ltp >= target_price:
+                            st.toast(f"Target Hit for {oid}! LTP: {ltp} >= {target_price}")
+                            modify_to_market(oid, o.get('trdSym'), o.get('qty'), trans)
+                            del st.session_state['targets'][oid] # Remove target
+
+                    # If SL-Buy (for Short Position): Trigger is above price. Target is below.
+                    # If LTP <= Target -> Hit.
+                    elif trans == "B" or trans == "BUY":
+                        if ltp <= target_price:
+                            st.toast(f"Target Hit for {oid}! LTP: {ltp} <= {target_price}")
+                            modify_to_market(oid, o.get('trdSym'), o.get('qty'), trans)
+                            del st.session_state['targets'][oid]
+
+    except Exception as e:
+        print(f"Monitor Error: {e}")
+
 # Main Content
 st.title("Kotak Neo Quick Options Dashboard")
 
 if 'client' in st.session_state:
     client = st.session_state['client']
+
+    # Run Monitor Check (Simulated background task on refresh)
+    run_target_monitor()
     st.success(f"Connected as {st.session_state.get('ucc', 'Unknown')}")
 
     if st.button("Logout"):
         del st.session_state['client']
         st.rerun()
+
+    # --- Pending Orders Section ---
+    with st.expander("Pending Orders & Targets", expanded=False):
+        col_mon, col_ref = st.columns([2, 1])
+        with col_mon:
+            monitor_on = st.checkbox("Enable Auto-Target Monitor", key="monitor_enabled", help="Refreshes page periodically to check targets.")
+        with col_ref:
+            if st.button("Refresh Orders"):
+                st.rerun()
+
+        # Fetch Orders
+        try:
+            orders_resp = client.order_report()
+            if orders_resp and 'data' in orders_resp:
+                all_orders = orders_resp['data']
+                # Filter for pending/trigger pending
+                # Note: Kotak keys might be 'ordSt' or 'order_status'. Trying standard API v2 keys.
+                # Assuming 'trig_pending' is the status for SL orders.
+                pending_orders = [
+                    o for o in all_orders
+                    if str(o.get('ordSt', o.get('order_status', ''))).lower() in ['trigger_pending', 'trig_pending', 'pending', 'open']
+                ]
+
+                if pending_orders:
+                    # Create UI for each order
+                    for order in pending_orders:
+                        oid = str(order.get('nOrdNo', order.get('order_id', 'Unknown')))
+                        sym = order.get('trdSym', order.get('trading_symbol', 'Unknown'))
+                        typ = order.get('trns', order.get('transaction_type', '')) # B/S
+                        qty = order.get('qty', order.get('quantity', 0))
+                        prc = order.get('trigPrc', order.get('trigger_price', 0))
+
+                        # Row
+                        c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 2, 2])
+                        with c1:
+                            st.write(f"**{sym}** ({typ})")
+                            st.caption(f"ID: {oid} | Qty: {qty}")
+                        with c2:
+                            st.write(f"Trig: {prc}")
+                        with c3:
+                            if st.button("Exit MKT", key=f"exit_{oid}"):
+                                modify_to_market(oid, sym, qty, typ)
+                                st.rerun()
+                        with c4:
+                            # Target Input
+                            curr_target = st.session_state['targets'].get(oid, 0.0)
+                            new_target = st.number_input("Target", value=float(curr_target), key=f"tgt_in_{oid}", step=0.5)
+                        with c5:
+                            if st.button("Set Target", key=f"set_{oid}"):
+                                st.session_state['targets'][oid] = new_target
+                                st.success(f"Target set: {new_target}")
+                        st.divider()
+                else:
+                    st.info("No pending orders found.")
+            else:
+                st.info("No orders found or error fetching.")
+                if st.checkbox("Show Raw Order Response"):
+                    st.write(orders_resp)
+        except Exception as e:
+            st.error(f"Error fetching orders: {e}")
 
     # Fetch Scrip Master (F&O and Cash for Spot Indices)
     df_master = None
@@ -696,6 +856,11 @@ if 'client' in st.session_state:
             st.error(f"Error processing data: {e}")
             if st.checkbox("Show Error Details"):
                  st.write(e)
+
+    # Auto Refresh Logic
+    if st.session_state.get('monitor_enabled'):
+        time.sleep(3) # Wait 3 seconds
+        st.rerun()
 
 else:
     st.info("Please login from the sidebar to continue.")
