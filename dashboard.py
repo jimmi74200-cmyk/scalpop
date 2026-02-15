@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import sys
 import time
+import math
 from socket_manager import ws_manager # Import singleton
 from background_monitor import bg_monitor # Import singleton
 
@@ -514,6 +515,23 @@ if 'client' in st.session_state:
 
                     return "N/A"
 
+                # Helper for robust check
+                def find_best_match(target, candidates):
+                    if target is None: return None
+                    if not candidates: return None
+
+                    # 1. Exact match
+                    if target in candidates:
+                        return target
+
+                    # 2. Close match (for floats)
+                    # candidates are likely sorted floats
+                    for c in candidates:
+                        if math.isclose(c, target, abs_tol=0.01):
+                            return c
+
+                    return None
+
                 # Helper to filter strikes around a target
                 def get_filtered_strikes(all_strikes, target_strike, window=30):
                     if not all_strikes: return [], 0
@@ -576,16 +594,20 @@ if 'client' in st.session_state:
                 with col3:
                     # Determine current CE target
                     # 1. Check if user manually selected one (in session state via key)
-                    current_ce_target = st.session_state.get('ce_strike_box')
+                    raw_ce_target = st.session_state.get('ce_strike_box')
+                    matched_ce_target = find_best_match(raw_ce_target, strikes)
 
-                    # 2. If not, check if we have a refresh-set value
-                    if current_ce_target is None or current_ce_target not in strikes:
-                        current_ce_target = st.session_state.get('ce_selected_strike')
+                    # 2. If valid user selection found, use it. Else check auto-selection.
+                    if matched_ce_target is not None:
+                        current_ce_target = matched_ce_target
+                    else:
+                        raw_auto_ce = st.session_state.get('ce_selected_strike')
+                        matched_auto_ce = find_best_match(raw_auto_ce, strikes)
 
-                    # 3. Fallback to middle
-                    if current_ce_target is None or current_ce_target not in strikes:
-                         if strikes:
-                             current_ce_target = strikes[len(strikes)//2]
+                        if matched_auto_ce is not None:
+                             current_ce_target = matched_auto_ce
+                        else:
+                             current_ce_target = strikes[len(strikes)//2] if strikes else 0
 
                     # 4. Filter list centered on target
                     ce_strikes_subset, ce_subset_idx = get_filtered_strikes(strikes, current_ce_target, window=30)
@@ -623,14 +645,19 @@ if 'client' in st.session_state:
 
                 with col4:
                     # Determine current PE target
-                    current_pe_target = st.session_state.get('pe_strike_box')
+                    raw_pe_target = st.session_state.get('pe_strike_box')
+                    matched_pe_target = find_best_match(raw_pe_target, strikes)
 
-                    if current_pe_target is None or current_pe_target not in strikes:
-                        current_pe_target = st.session_state.get('pe_selected_strike')
+                    if matched_pe_target is not None:
+                        current_pe_target = matched_pe_target
+                    else:
+                        raw_auto_pe = st.session_state.get('pe_selected_strike')
+                        matched_auto_pe = find_best_match(raw_auto_pe, strikes)
 
-                    if current_pe_target is None or current_pe_target not in strikes:
-                         if strikes:
-                             current_pe_target = strikes[len(strikes)//2]
+                        if matched_auto_pe is not None:
+                             current_pe_target = matched_auto_pe
+                        else:
+                             current_pe_target = strikes[len(strikes)//2] if strikes else 0
 
                     # 4. Filter list centered on target
                     pe_strikes_subset, pe_subset_idx = get_filtered_strikes(strikes, current_pe_target, window=30)
