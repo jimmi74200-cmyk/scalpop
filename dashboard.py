@@ -191,35 +191,42 @@ if 'client' in st.session_state:
 
                             root_symbol = symbol.split()[0] # e.g. "NIFTY" from "NIFTY 50" or "NIFTY"
 
-                            # Filter for ANY Future matching the root symbol
-                            # Debug: check available types
-                            # st.write("Types:", df_indices['instrument_type'].unique())
-
-                            all_futs = df_indices[
-                                (df_indices['symbol'].str.contains(root_symbol, case=False, na=False)) &
-                                (df_indices['instrument_type'].astype(str).str.contains("FUT", case=False, na=False))
-                            ].copy()
+                            # PRIORITIZE EXACT MATCH on 'symbol' first
+                            # This prevents "NIFTY" from matching "MIDCPNIFTY" or "NIFTYNXT50"
 
                             fut_subset = pd.DataFrame()
 
-                            if not all_futs.empty:
+                            # 1. Try Exact Symbol Match + FUT
+                            exact_symbol_futs = df_indices[
+                                (df_indices['symbol'] == symbol) &
+                                (df_indices['instrument_type'].astype(str).str.contains("FUT", case=False, na=False))
+                            ].copy()
+
+                            # 2. If no exact match, try Root Symbol Match + FUT (be stricter)
+                            if exact_symbol_futs.empty:
+                                exact_symbol_futs = df_indices[
+                                    (df_indices['symbol'].str.startswith(root_symbol)) &
+                                    (df_indices['instrument_type'].astype(str).str.contains("FUT", case=False, na=False))
+                                ].copy()
+
+                            if not exact_symbol_futs.empty:
                                 # Try exact expiry first
-                                exact_futs = all_futs[all_futs['expiry'] == expiry]
+                                exact_futs = exact_symbol_futs[exact_symbol_futs['expiry'] == expiry]
                                 if not exact_futs.empty:
                                     fut_subset = exact_futs.head(1)
                                 else:
                                     # Find nearest future expiring >= option expiry
-                                    all_futs['expiry_dt'] = pd.to_datetime(all_futs['expiry'], format='%d%b%Y', errors='coerce')
+                                    exact_symbol_futs['expiry_dt'] = pd.to_datetime(exact_symbol_futs['expiry'], format='%d%b%Y', errors='coerce')
                                     curr_opt_expiry = pd.to_datetime(expiry, format='%d%b%Y', errors='coerce')
 
                                     if pd.notna(curr_opt_expiry):
-                                        future_futs = all_futs[all_futs['expiry_dt'] >= curr_opt_expiry].sort_values('expiry_dt')
+                                        future_futs = exact_symbol_futs[exact_symbol_futs['expiry_dt'] >= curr_opt_expiry].sort_values('expiry_dt')
                                         if not future_futs.empty:
                                             fut_subset = future_futs.head(1)
 
                             # Fallback: Try finding Spot Index if Future not found
                             if fut_subset.empty:
-                                # Strategy: Look for anything in NSE_CM that looks like the root symbol
+                                # Strategy: Look for anything in NSE_CM that matches the symbol EXACTLY first
                                 # We trust segment 'nse_cm' more than 'instrument_type'
 
                                 # 1. Filter by segment 'cm'
@@ -228,10 +235,14 @@ if 'client' in st.session_state:
                                 ]
 
                                 if not cm_subset.empty:
-                                    # 2. Filter by root symbol
-                                    idx_subset = cm_subset[
-                                        cm_subset['symbol'].str.contains(root_symbol, case=False, na=False)
-                                    ].copy()
+                                    # 2. Filter by Exact Symbol first
+                                    idx_subset = cm_subset[cm_subset['symbol'] == symbol].copy()
+
+                                    if idx_subset.empty:
+                                         # Fallback to contains
+                                         idx_subset = cm_subset[
+                                            cm_subset['symbol'].str.contains(root_symbol, case=False, na=False)
+                                         ].copy()
 
                                     if not idx_subset.empty:
                                         # Prefer short names (e.g. "NIFTY 50" over "NIFTY 50 ...")
