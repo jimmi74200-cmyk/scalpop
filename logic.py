@@ -53,7 +53,11 @@ def filter_data_for_indices(df, symbols=None):
     Filters the DataFrame for specific indices and formats columns.
     """
     if symbols is None:
-        symbols = ["NIFTY", "BANKNIFTY", "FINNIFTY", "NIFTY 50", "NIFTY BANK", "NIFTYFINSERVICE", "NIFTY 50", "NIFTY BANK", "FINANCIAL SERVICES"]
+        symbols = [
+            "NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY", "MIDCAPNIFTY", "NIFTYNXT50",
+            "NIFTY 50", "NIFTY BANK", "NIFTYFINSERVICE", "FINANCIAL SERVICES",
+            "SENSEX", "BANKEX"
+        ]
 
     # Mapping for Kotak CSV usually:
     # pSymbol -> Symbol
