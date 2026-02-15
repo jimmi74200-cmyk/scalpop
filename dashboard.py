@@ -597,10 +597,14 @@ if 'client' in st.session_state:
                     raw_ce_target = st.session_state.get('ce_strike_box')
                     matched_ce_target = find_best_match(raw_ce_target, strikes)
 
-                    # 2. If valid user selection found, use it. Else check auto-selection.
+                    # 2. If valid user selection found, use it and SYNC session state
                     if matched_ce_target is not None:
                         current_ce_target = matched_ce_target
+                        # Force session state to match the exact object in the new list
+                        if st.session_state.get('ce_strike_box') != matched_ce_target:
+                             st.session_state['ce_strike_box'] = matched_ce_target
                     else:
+                        # 3. Fallback to auto-select
                         raw_auto_ce = st.session_state.get('ce_selected_strike')
                         matched_auto_ce = find_best_match(raw_auto_ce, strikes)
 
@@ -650,6 +654,9 @@ if 'client' in st.session_state:
 
                     if matched_pe_target is not None:
                         current_pe_target = matched_pe_target
+                        # Force session state to match
+                        if st.session_state.get('pe_strike_box') != matched_pe_target:
+                             st.session_state['pe_strike_box'] = matched_pe_target
                     else:
                         raw_auto_pe = st.session_state.get('pe_selected_strike')
                         matched_auto_pe = find_best_match(raw_auto_pe, strikes)
