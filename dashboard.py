@@ -45,6 +45,30 @@ with st.sidebar:
                 st.error("Please login first")
         st.markdown("---")
 
+    # Scrip Master Debug Tool
+    if st.checkbox("Show Scrip Master Info"):
+        st.subheader("Scrip Master Files")
+        if st.button("Get File URLs"):
+            if 'client' in st.session_state:
+                try:
+                    url_fo = st.session_state['client'].scrip_master(exchange_segment="nse_fo")
+                    st.write("NSE FO URL:", url_fo)
+                    url_cm = st.session_state['client'].scrip_master(exchange_segment="nse_cm")
+                    st.write("NSE CM URL:", url_cm)
+                except Exception as e:
+                    st.error(f"Error fetching URLs: {e}")
+            else:
+                st.error("Please login first")
+
+        if 'df_master' in locals() and df_master is not None:
+            st.download_button(
+                label="Download Processed Data (First 1000 rows)",
+                data=df_master.head(1000).to_csv(index=False).encode('utf-8'),
+                file_name='scrip_master_sample.csv',
+                mime='text/csv',
+            )
+        st.markdown("---")
+
     consumer_key = st.text_input("Consumer Key", type="password", help="From Kotak Neo Trade API settings")
     mobile_number = st.text_input("Mobile Number", help="Registered Mobile Number with Country Code (e.g., +91...)")
     # password = st.text_input("Password", type="password", help="Your account password") # Not used in TOTP flow
