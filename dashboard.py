@@ -166,25 +166,34 @@ if 'client' in st.session_state:
 
         # Define core rendering logic (UI only)
         def render_pending_orders_ui():
-            # Fetch Orders
+            orders_resp = None
             try:
                 orders_resp = client.order_report()
                 if orders_resp and 'data' in orders_resp:
                     all_orders = orders_resp['data']
-                    pending_orders = [
-                        o for o in all_orders
-                        if str(o.get('ordSt', o.get('order_status', ''))).lower() in ['trigger_pending', 'trig_pending', 'pending', 'open']
-                    ]
+
+                    # Expanded status list based on user docs ("open pending", etc.)
+                    # and robust case-insensitive check
+                    target_statuses = ['trigger_pending', 'trig_pending', 'pending', 'open', 'open pending', 'modified', 'after market order req received']
+
+                    pending_orders = []
+                    for o in all_orders:
+                        # Fallback for status key: ordSt or order_status or stat
+                        raw_status = str(o.get('ordSt', o.get('order_status', o.get('stat', '')))).lower().strip()
+                        if raw_status in target_statuses:
+                            pending_orders.append(o)
 
                     if pending_orders:
                         # Create UI for each order
                         for order in pending_orders:
                             oid = str(order.get('nOrdNo', order.get('order_id', 'Unknown')))
                             sym = order.get('trdSym', order.get('trading_symbol', 'Unknown'))
-                            typ = order.get('trns', order.get('transaction_type', '')) # B/S
+                            # Fallback for transaction type: trns, trnsTp, transaction_type
+                            typ = order.get('trns', order.get('trnsTp', order.get('transaction_type', ''))) # B/S
                             qty = order.get('qty', order.get('quantity', 0))
-                            prc = order.get('trigPrc', order.get('trigger_price', 0))
-                            token = order.get('tok')
+                            # Fallback for price: trigPrc, trigger_price, prc
+                            prc = order.get('trigPrc', order.get('trigger_price', order.get('prc', 0)))
+                            token = order.get('tok', order.get('instrument_token'))
 
                             # Row
                             c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 2, 2])
@@ -192,7 +201,7 @@ if 'client' in st.session_state:
                                 st.write(f"**{sym}** ({typ})")
                                 st.caption(f"ID: {oid} | Qty: {qty}")
                             with c2:
-                                st.write(f"Trig: {prc}")
+                                st.write(f"Prc: {prc}")
                             with c3:
                                 if st.button("Exit MKT", key=f"exit_{oid}"):
                                     modify_to_market(oid, sym, qty, typ)
@@ -231,10 +240,13 @@ if 'client' in st.session_state:
                         st.info("No pending orders found.")
                 else:
                     st.info("No orders found or error fetching.")
-                    if st.checkbox("Show Raw Order Response"):
-                        st.write(orders_resp)
+
             except Exception as e:
                 st.error(f"Error fetching orders: {e}")
+
+            # Debug Expander - Always Visible
+            with st.expander("Debug: Raw Order Response"):
+                st.write(orders_resp)
 
         render_pending_orders_ui()
 
