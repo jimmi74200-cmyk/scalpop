@@ -118,6 +118,7 @@ def modify_to_market(order_id, symbol, qty, trans_type, segment="nse_fo"):
         # To exit at market, we change order type to MKT and price/trigger to 0
         mod_args = {
             "order_id": str(order_id),
+            "nOrdNo": str(order_id),
             "order_type": "MKT",
             "quantity": str(qty),
             "price": "0",
