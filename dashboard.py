@@ -167,6 +167,10 @@ if 'client' in st.session_state:
         # Define core rendering logic (UI only)
         def render_pending_orders_ui():
             orders_resp = None
+            status_debug_list = []
+
+            show_all = st.checkbox("Show All Orders (Ignore Status Filter)", help="Use this to debug if orders are missing due to status mismatch.")
+
             try:
                 orders_resp = client.order_report()
                 if orders_resp and 'data' in orders_resp:
@@ -174,13 +178,23 @@ if 'client' in st.session_state:
 
                     # Expanded status list based on user docs ("open pending", etc.)
                     # and robust case-insensitive check
-                    target_statuses = ['trigger_pending', 'trig_pending', 'pending', 'open', 'open pending', 'modified', 'after market order req received']
+                    target_statuses = [
+                        'trigger_pending', 'trig_pending', 'pending', 'open',
+                        'open pending', 'modified', 'after market order req received',
+                        'trigger pending' # Added explicitly with space
+                    ]
 
                     pending_orders = []
                     for o in all_orders:
                         # Fallback for status key: ordSt or order_status or stat
                         raw_status = str(o.get('ordSt', o.get('order_status', o.get('stat', '')))).lower().strip()
-                        if raw_status in target_statuses:
+                        oid = str(o.get('nOrdNo', o.get('order_id', 'Unknown')))
+
+                        status_debug_list.append(f"{oid}: {raw_status}")
+
+                        if show_all:
+                            pending_orders.append(o)
+                        elif raw_status in target_statuses:
                             pending_orders.append(o)
 
                     if pending_orders:
@@ -192,7 +206,9 @@ if 'client' in st.session_state:
                             typ = order.get('trns', order.get('trnsTp', order.get('transaction_type', ''))) # B/S
                             qty = order.get('qty', order.get('quantity', 0))
                             # Fallback for price: trigPrc, trigger_price, prc
-                            prc = order.get('trigPrc', order.get('trigger_price', order.get('prc', 0)))
+                            # Also check trgPrc from user debug
+                            prc = order.get('trgPrc', order.get('trigPrc', order.get('trigger_price', order.get('prc', 0))))
+
                             token = order.get('tok', order.get('instrument_token'))
 
                             # Row
@@ -246,6 +262,7 @@ if 'client' in st.session_state:
 
             # Debug Expander - Always Visible
             with st.expander("Debug: Raw Order Response"):
+                st.write("Detected Statuses:", status_debug_list)
                 st.write(orders_resp)
 
         render_pending_orders_ui()
