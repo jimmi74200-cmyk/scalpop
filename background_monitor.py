@@ -54,7 +54,8 @@ class BackgroundMonitor:
                 "segment": segment,
                 "status": "Monitoring",
                 "last_ltp": None,
-                "error": None
+                "error": None,
+                "last_poll_time": 0
             }
         # Ensure subscription in WS manager
         if self.client:
@@ -84,8 +85,48 @@ class BackgroundMonitor:
                     target_price = data["target"]
                     trans_type = data["type"]
 
-                    # Get LTP
+                    # 1. Try WebSocket LTP
                     ltp = ws_manager.get_ltp(token)
+
+                    # 2. Fallback: Polling if LTP is stale/missing (every 5 seconds)
+                    now = time.time()
+                    if ltp is None or ltp == 0:
+                        last_poll = data.get("last_poll_time", 0)
+                        if now - last_poll > 5:
+                            try:
+                                # Fetch Quote via HTTP REST API
+                                q_resp = self.client.quotes(instrument_tokens=[{"instrument_token": token, "exchange_segment": data["segment"]}], quote_type="ltp")
+                                # Extract LTP from response (reuse logic similar to dashboard but simplified)
+                                # The response structure is tricky, let's look for 'ltp' or 'last_price'
+                                polled_ltp = None
+
+                                # Recursive search for LTP
+                                def find_ltp_recursive(obj):
+                                    if isinstance(obj, dict):
+                                        for k, v in obj.items():
+                                            if str(k).lower() in ['ltp', 'last_price', 'lp', 'close']: return v
+                                            res = find_ltp_recursive(v)
+                                            if res: return res
+                                    elif isinstance(obj, list):
+                                        for item in obj:
+                                            res = find_ltp_recursive(item)
+                                            if res: return res
+                                    return None
+
+                                polled_ltp = find_ltp_recursive(q_resp)
+
+                                if polled_ltp:
+                                    ltp = float(polled_ltp)
+                                    # Update WS manager too so it persists
+                                    ws_manager.latest_ltp[token] = ltp
+                                    print(f"Polled LTP for {data['symbol']}: {ltp}")
+
+                                # Update poll time
+                                with self.lock:
+                                    if oid in self.targets:
+                                        self.targets[oid]["last_poll_time"] = now
+                            except Exception as poll_e:
+                                print(f"Polling Error for {oid}: {poll_e}")
 
                     # Update LTP in target dict for UI
                     with self.lock:
