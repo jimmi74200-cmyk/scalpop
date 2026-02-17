@@ -34,12 +34,24 @@ class WebSocketManager:
             else:
                 data = message
 
-            # Neo API feed format usually looks like list of dicts
+            # Neo API feed format varies.
+            # 1. Simple List: [item1, item2]
+            # 2. Wrapper Dict: {'type': 'stock_feed', 'data': [item1, item2]}
+
+            items_to_process = []
+
             if isinstance(data, list):
-                for item in data:
-                    self._process_feed_item(item)
+                items_to_process = data
             elif isinstance(data, dict):
-                self._process_feed_item(data)
+                # Check for wrapper
+                if 'data' in data and isinstance(data['data'], list):
+                    items_to_process = data['data']
+                else:
+                    # Treat the dict itself as an item
+                    items_to_process = [data]
+
+            for item in items_to_process:
+                self._process_feed_item(item)
 
         except Exception as e:
             with self.lock:
