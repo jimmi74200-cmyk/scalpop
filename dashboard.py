@@ -748,10 +748,6 @@ if 'client' in st.session_state:
                             q = client.quotes(instrument_tokens=[{"instrument_token": ce_token, "exchange_segment": seg}], quote_type="ltp")
                             ce_ltp = extract_ltp(q)
 
-                            # Always allow viewing raw response
-                            with st.expander("Raw CE Response"):
-                                st.write(q)
-
                         except Exception as e:
                             ce_ltp = "Err"
                             st.session_state['debug_token'] = ce_token
@@ -800,10 +796,6 @@ if 'client' in st.session_state:
                             seg = pe_seg if pe_seg else "nse_fo"
                             q = client.quotes(instrument_tokens=[{"instrument_token": pe_token, "exchange_segment": seg}], quote_type="ltp")
                             pe_ltp = extract_ltp(q)
-
-                            # Always allow viewing raw response
-                            with st.expander("Raw PE Response"):
-                                st.write(q)
 
                         except Exception as e:
                             pe_ltp = "Err"
