@@ -18,7 +18,7 @@ class BackgroundMonitor:
         if self.initialized:
             return
 
-        self.targets = {} # {order_id: {target_price, token, transaction_type, symbol, quantity, segment}}
+        self.targets = {} # {order_id: {target_price, token, transaction_type, symbol, quantity, segment, status, last_ltp, error}}
         self.client = None
         self.is_running = False
         self.thread = None
@@ -51,7 +51,10 @@ class BackgroundMonitor:
                 "type": transaction_type,
                 "symbol": symbol,
                 "qty": quantity,
-                "segment": segment
+                "segment": segment,
+                "status": "Monitoring",
+                "last_ltp": None,
+                "error": None
             }
         # Ensure subscription in WS manager
         if self.client:
@@ -84,6 +87,15 @@ class BackgroundMonitor:
                     # Get LTP
                     ltp = ws_manager.get_ltp(token)
 
+                    # Update LTP in target dict for UI
+                    with self.lock:
+                        if oid in self.targets:
+                            self.targets[oid]["last_ltp"] = ltp
+                            if ltp is None:
+                                self.targets[oid]["status"] = "Waiting for Data..."
+                            else:
+                                self.targets[oid]["status"] = "Active"
+
                     if ltp is not None and ltp > 0:
                         hit = False
                         # Logic:
@@ -102,9 +114,17 @@ class BackgroundMonitor:
 
                         if hit:
                             print(f"Target HIT for {data['symbol']} (Order {oid}). LTP: {ltp}, Target: {target_price}")
+                            with self.lock:
+                                if oid in self.targets:
+                                     self.targets[oid]["status"] = "Target HIT! Modifying..."
+
                             success = self._modify_to_market(oid, data)
                             if success:
                                 self.remove_target(oid)
+                            else:
+                                with self.lock:
+                                    if oid in self.targets:
+                                        self.targets[oid]["status"] = "Modification Failed (Retrying...)"
 
             except Exception as e:
                 print(f"Monitor Loop Error: {e}")
@@ -130,15 +150,34 @@ class BackgroundMonitor:
             print(f"Modifying Order {order_id} to Market...")
             resp = self.client.modify_order(**mod_args)
 
-            if resp and 'nOrdNo' in resp:
+            # Check for success (usually nOrdNo is returned)
+            if resp and ('nOrdNo' in resp or 'result' in resp):
+                # API v2 often returns nOrdNo on success, or maybe 'result': 'ok'
+                # Check for error keys explicitly
+                if 'Error' in resp or 'error' in resp:
+                     err_msg = resp.get('Error', resp.get('error'))
+                     with self.lock:
+                        if str(order_id) in self.targets:
+                            self.targets[str(order_id)]["error"] = str(err_msg)
+                     print(f"Order {order_id} Modification FAILED: {err_msg}")
+                     return False
+
                 print(f"Order {order_id} Modification SUCCESS")
                 return True
             else:
-                print(f"Order {order_id} Modification FAILED: {resp}")
+                # Handle unknown response format
+                msg = f"Unknown Resp: {resp}"
+                with self.lock:
+                    if str(order_id) in self.targets:
+                        self.targets[str(order_id)]["error"] = msg
+                print(f"Order {order_id} Modification FAILED: {msg}")
                 return False
 
         except Exception as e:
             print(f"Exception modifying order {order_id}: {e}")
+            with self.lock:
+                if str(order_id) in self.targets:
+                    self.targets[str(order_id)]["error"] = str(e)
             return False
 
 # Singleton

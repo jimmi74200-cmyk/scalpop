@@ -230,8 +230,18 @@ if 'client' in st.session_state:
 
                             with c4:
                                 if is_monitored:
-                                    tgt = bg_monitor.targets[oid]['target']
-                                    st.info(f"Active Target: {tgt}")
+                                    tgt_data = bg_monitor.targets[oid]
+                                    tgt_price = tgt_data['target']
+
+                                    # Extract monitoring status
+                                    mon_status = tgt_data.get('status', 'Unknown')
+                                    mon_ltp = tgt_data.get('last_ltp')
+                                    mon_err = tgt_data.get('error')
+
+                                    st.info(f"Target: {tgt_price}")
+                                    st.caption(f"LTP: {mon_ltp} | {mon_status}")
+                                    if mon_err:
+                                        st.error(f"Err: {mon_err}")
                                 else:
                                     # Target Input
                                     st.number_input("Target", value=0.0, key=f"tgt_in_{oid}", step=0.5)
@@ -265,6 +275,12 @@ if 'client' in st.session_state:
             with st.expander("Debug: Raw Order Response"):
                 st.write("Detected Statuses:", status_debug_list)
                 st.write(orders_resp)
+
+            # WebSocket Debug Expander
+            with st.expander("Debug: WebSocket Status"):
+                ws_status = ws_manager.get_status()
+                st.json(ws_status)
+                st.write("Active Targets:", bg_monitor.targets)
 
         render_pending_orders_ui()
 
