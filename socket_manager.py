@@ -4,7 +4,8 @@ import time
 
 class WebSocketManager:
     def __init__(self):
-        self.latest_ltp = {}
+        # Stores {token: {'ltp': float, 'time': float}}
+        self.latest_ltp_data = {}
         self.subscribed_tokens = set()
         self.is_running = False
         self.lock = threading.Lock()
@@ -18,7 +19,7 @@ class WebSocketManager:
     def on_message(self, message):
         """
         Callback for WebSocket messages.
-        Parses the message and updates latest_ltp.
+        Parses the message and updates latest_ltp_data.
         """
         try:
             with self.lock:
@@ -57,8 +58,9 @@ class WebSocketManager:
         if token and ltp is not None:
             try:
                 val = float(ltp)
+                now = time.time()
                 with self.lock:
-                    self.latest_ltp[token] = val
+                    self.latest_ltp_data[token] = {'ltp': val, 'time': now}
             except ValueError:
                 pass
 
@@ -113,8 +115,17 @@ class WebSocketManager:
                 print(f"Subscribe Error: {e}")
 
     def get_ltp(self, token):
+        """Returns (ltp, timestamp) or (None, None)"""
         with self.lock:
-            return self.latest_ltp.get(str(token))
+            data = self.latest_ltp_data.get(str(token))
+            if data:
+                return data['ltp'], data['time']
+            return None, None
+
+    def update_ltp(self, token, ltp):
+        """Manually update LTP (e.g. from polling)"""
+        with self.lock:
+            self.latest_ltp_data[str(token)] = {'ltp': float(ltp), 'time': time.time()}
 
     def get_status(self):
         with self.lock:

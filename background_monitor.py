@@ -85,14 +85,26 @@ class BackgroundMonitor:
                     target_price = data["target"]
                     trans_type = data["type"]
 
-                    # 1. Try WebSocket LTP
-                    ltp = ws_manager.get_ltp(token)
+                    # 1. Try WebSocket LTP (returns (ltp, timestamp))
+                    ltp, ltp_time = ws_manager.get_ltp(token)
 
                     # 2. Fallback: Polling if LTP is stale/missing (every 5 seconds)
                     now = time.time()
+                    should_poll = False
+
                     if ltp is None or ltp == 0:
+                        should_poll = True
+                    elif ltp_time and (now - ltp_time > 5):
+                        should_poll = True
+
+                    if should_poll:
                         last_poll = data.get("last_poll_time", 0)
                         if now - last_poll > 5:
+                            # Update status to indicate polling
+                            with self.lock:
+                                if oid in self.targets:
+                                     self.targets[oid]["status"] = "Polling (Stale/Missing WS Data)..."
+
                             try:
                                 # Fetch Quote via HTTP REST API
                                 q_resp = self.client.quotes(instrument_tokens=[{"instrument_token": token, "exchange_segment": data["segment"]}], quote_type="ltp")
@@ -118,7 +130,7 @@ class BackgroundMonitor:
                                 if polled_ltp:
                                     ltp = float(polled_ltp)
                                     # Update WS manager too so it persists
-                                    ws_manager.latest_ltp[token] = ltp
+                                    ws_manager.update_ltp(token, ltp)
                                     print(f"Polled LTP for {data['symbol']}: {ltp}")
 
                                 # Update poll time
@@ -134,6 +146,9 @@ class BackgroundMonitor:
                             self.targets[oid]["last_ltp"] = ltp
                             if ltp is None:
                                 self.targets[oid]["status"] = "Waiting for Data..."
+                            elif should_poll and (time.time() - data.get("last_poll_time", 0) < 2):
+                                 # Keep "Polling..." status briefly visible
+                                 pass
                             else:
                                 self.targets[oid]["status"] = "Active"
 
