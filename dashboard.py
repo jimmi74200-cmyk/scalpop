@@ -112,13 +112,13 @@ with st.sidebar:
                 st.error(f"Login process failed: {e}")
 
 # Helper: Modify SL Order to Market
-def modify_to_market(order_id, symbol, qty, trans_type, segment="nse_fo"):
+def modify_to_market(order_id, symbol, qty, trans_type, token, segment="nse_fo"):
     try:
         # According to API v2 docs (inferred), modify usually takes params
         # To exit at market, we change order type to MKT and price/trigger to 0
         mod_args = {
             "order_id": str(order_id),
-            "nOrdNo": str(order_id),
+            "instrument_token": str(token),
             "order_type": "MKT",
             "quantity": str(qty),
             "price": "0",
@@ -221,7 +221,7 @@ if 'client' in st.session_state:
                                 st.write(f"Prc: {prc}")
                             with c3:
                                 if st.button("Exit MKT", key=f"exit_{oid}"):
-                                    modify_to_market(oid, sym, qty, typ)
+                                    modify_to_market(oid, sym, qty, typ, token)
                                     bg_monitor.remove_target(oid)
                                     st.rerun()
 

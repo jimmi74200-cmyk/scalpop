@@ -115,7 +115,7 @@ class BackgroundMonitor:
         try:
             mod_args = {
                 "order_id": str(order_id),
-                "nOrdNo": str(order_id), # Explicitly add nOrdNo
+                "instrument_token": str(data["token"]),
                 "order_type": "MKT",
                 "quantity": str(data["qty"]),
                 "price": "0",
