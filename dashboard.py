@@ -817,24 +817,26 @@ if 'client' in st.session_state:
                         st.error("Invalid Instrument Token")
                         return
 
-                    # 0. VALIDATE LTP
+                    # 0. FETCH FRESH LTP (Ensure SL is accurate)
+                    # User reported issues with "old ltp" causing bad SL placement.
+                    # We always fetch fresh quote here to guarantee accuracy.
                     current_price = 0.0
                     try:
-                        current_price = float(ltp_ref)
-                    except ValueError:
-                         pass
-
-                    # If LTP is invalid/zero, force fetch
-                    if current_price <= 0:
-                        st.warning(f"Invalid LTP ({ltp_ref}) for Stop Loss calculation. Attempting to fetch fresh quote...")
+                        fresh_q = client.quotes(instrument_tokens=[{"instrument_token": str(token), "exchange_segment": "nse_fo"}], quote_type="ltp")
+                        extracted_ltp = extract_ltp(fresh_q)
+                        current_price = float(extracted_ltp)
+                        # st.toast(f"Fresh LTP: {current_price}") # Optional debug
+                    except Exception as fetch_e:
+                        st.warning(f"Fresh Quote Fetch Failed: {fetch_e}. Falling back to Dashboard LTP.")
+                        # Fallback to passed reference
                         try:
-                            fresh_q = client.quotes(instrument_tokens=[{"instrument_token": str(token), "exchange_segment": "nse_fo"}], quote_type="ltp")
-                            extracted_ltp = extract_ltp(fresh_q)
-                            current_price = float(extracted_ltp)
-                            st.success(f"Fetched fresh LTP: {current_price}")
-                        except Exception as fetch_e:
-                            st.error(f"Could not fetch fresh LTP: {fetch_e}. Order ABORTED to prevent missing Stop Loss.")
-                            return
+                            current_price = float(ltp_ref)
+                        except:
+                            current_price = 0.0
+
+                    if current_price <= 0:
+                        st.error("Invalid Price for Stop Loss. Order ABORTED.")
+                        return
 
                     st.toast(f"Placing {transaction_type} order for {symbol} {expiry} {strike} {option_type}...")
 
