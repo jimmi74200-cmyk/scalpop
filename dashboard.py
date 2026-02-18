@@ -817,6 +817,25 @@ if 'client' in st.session_state:
                         st.error("Invalid Instrument Token")
                         return
 
+                    # 0. VALIDATE LTP
+                    current_price = 0.0
+                    try:
+                        current_price = float(ltp_ref)
+                    except ValueError:
+                         pass
+
+                    # If LTP is invalid/zero, force fetch
+                    if current_price <= 0:
+                        st.warning(f"Invalid LTP ({ltp_ref}) for Stop Loss calculation. Attempting to fetch fresh quote...")
+                        try:
+                            fresh_q = client.quotes(instrument_tokens=[{"instrument_token": str(token), "exchange_segment": "nse_fo"}], quote_type="ltp")
+                            extracted_ltp = extract_ltp(fresh_q)
+                            current_price = float(extracted_ltp)
+                            st.success(f"Fetched fresh LTP: {current_price}")
+                        except Exception as fetch_e:
+                            st.error(f"Could not fetch fresh LTP: {fetch_e}. Order ABORTED to prevent missing Stop Loss.")
+                            return
+
                     st.toast(f"Placing {transaction_type} order for {symbol} {expiry} {strike} {option_type}...")
 
                     product_type = "MIS"
@@ -864,8 +883,7 @@ if 'client' in st.session_state:
                              # 2. Place Stop Loss Order (SL-M) if needed
                              if stop_loss > 0:
                                  try:
-                                     # Convert LTP to float
-                                     current_price = float(ltp_ref)
+                                     # Use the validated current_price from Step 0
 
                                      # Calculate Trigger Price
                                      if transaction_type == "BUY":
@@ -925,8 +943,6 @@ if 'client' in st.session_state:
                                          else:
                                              st.warning(f"Stop Loss Order Failed: {sl_resp.get('Error', sl_resp)}")
 
-                                 except ValueError:
-                                     st.warning("Invalid LTP for Stop Loss calculation. SL Order skipped.")
                                  except Exception as sl_ex:
                                      st.warning(f"Exception placing SL Order: {sl_ex}")
 
