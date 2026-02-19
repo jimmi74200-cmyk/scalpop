@@ -702,12 +702,6 @@ if 'client' in st.session_state:
                         pass # Ignore if something goes wrong during callback
 
                 # Limit Price Adjustment Helpers
-                def adjust_limit_price(key, delta):
-                    curr = st.session_state.get(key, 0.0)
-                    new_val = round(float(curr) + delta, 2)
-                    if new_val < 0: new_val = 0.05
-                    st.session_state[key] = new_val
-
                 def refresh_limit_price(key, token, segment="nse_fo"):
                     try:
                         if token:
@@ -790,14 +784,10 @@ if 'client' in st.session_state:
 
                     if limit_order_active:
                         # Render Limit UI
-                        l1, l2, l3, l4 = st.columns([3, 1, 1, 1])
+                        l1, l2 = st.columns([4, 1])
                         with l1:
                             st.number_input("Limit Price", key="ce_limit_price", label_visibility="collapsed", step=0.05, format="%.2f")
                         with l2:
-                            st.button("−", key="ce_lim_minus", on_click=adjust_limit_price, args=('ce_limit_price', -0.05), use_container_width=True)
-                        with l3:
-                            st.button("+", key="ce_lim_plus", on_click=adjust_limit_price, args=('ce_limit_price', 0.05), use_container_width=True)
-                        with l4:
                             st.button("↻", key="ce_lim_refresh", on_click=refresh_limit_price, args=('ce_limit_price', ce_token, ce_seg), help="Refresh Limit Price from LTP", use_container_width=True)
                     else:
                         st.metric("CE LTP", ce_ltp)
@@ -869,14 +859,10 @@ if 'client' in st.session_state:
 
                     if limit_order_active:
                         # Render Limit UI
-                        l1, l2, l3, l4 = st.columns([3, 1, 1, 1])
+                        l1, l2 = st.columns([4, 1])
                         with l1:
                             st.number_input("Limit Price", key="pe_limit_price", label_visibility="collapsed", step=0.05, format="%.2f")
                         with l2:
-                            st.button("−", key="pe_lim_minus", on_click=adjust_limit_price, args=('pe_limit_price', -0.05), use_container_width=True)
-                        with l3:
-                            st.button("+", key="pe_lim_plus", on_click=adjust_limit_price, args=('pe_limit_price', 0.05), use_container_width=True)
-                        with l4:
                             st.button("↻", key="pe_lim_refresh", on_click=refresh_limit_price, args=('pe_limit_price', pe_token, pe_seg), help="Refresh Limit Price from LTP", use_container_width=True)
                     else:
                         st.metric("PE LTP", pe_ltp)
