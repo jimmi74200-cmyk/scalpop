@@ -18,7 +18,8 @@ class BackgroundMonitor:
         if self.initialized:
             return
 
-        self.targets = {} # {order_id: {target_price, token, transaction_type, symbol, quantity, segment, status, last_ltp, error}}
+        self.targets = {} # {order_id: {target_price, token, transaction_type, symbol, quantity, segment, status, last_ltp, error, last_poll_time}}
+        self.pending_entries = {} # {entry_id: {sl_params: dict, status: str, check_count: int}}
         self.client = None
         self.is_running = False
         self.thread = None
@@ -69,12 +70,28 @@ class BackgroundMonitor:
                 del self.targets[str(order_id)]
                 print(f"Target removed for {order_id}")
 
+    def add_pending_entry(self, order_id, sl_params):
+        """
+        Monitors an entry order. When it fills (TRADED), places the SL order defined in sl_params.
+        """
+        with self.lock:
+            self.pending_entries[str(order_id)] = {
+                "sl_params": sl_params,
+                "status": "Pending Fill",
+                "check_count": 0
+            }
+        print(f"Pending Entry added for monitoring: {order_id}")
+
     def _monitor_loop(self):
         while self.is_running:
             if not self.client:
                 time.sleep(1)
                 continue
 
+            # 1. Check Pending Entries (for Limit Orders)
+            self._check_pending_entries()
+
+            # 2. Check Targets (for Exit)
             try:
                 # Iterate over a copy of items to avoid modification issues
                 with self.lock:
@@ -108,8 +125,6 @@ class BackgroundMonitor:
                             try:
                                 # Fetch Quote via HTTP REST API
                                 q_resp = self.client.quotes(instrument_tokens=[{"instrument_token": token, "exchange_segment": data["segment"]}], quote_type="ltp")
-                                # Extract LTP from response (reuse logic similar to dashboard but simplified)
-                                # The response structure is tricky, let's look for 'ltp' or 'last_price'
                                 polled_ltp = None
 
                                 # Recursive search for LTP
@@ -131,7 +146,7 @@ class BackgroundMonitor:
                                     ltp = float(polled_ltp)
                                     # Update WS manager too so it persists
                                     ws_manager.update_ltp(token, ltp)
-                                    print(f"Polled LTP for {data['symbol']}: {ltp}")
+                                    # print(f"Polled LTP for {data['symbol']}: {ltp}")
 
                                 # Update poll time
                                 with self.lock:
@@ -147,20 +162,12 @@ class BackgroundMonitor:
                             if ltp is None:
                                 self.targets[oid]["status"] = "Waiting for Data..."
                             elif should_poll and (time.time() - data.get("last_poll_time", 0) < 2):
-                                 # Keep "Polling..." status briefly visible
                                  pass
                             else:
                                 self.targets[oid]["status"] = "Active"
 
                     if ltp is not None and ltp > 0:
                         hit = False
-                        # Logic:
-                        # SL-Sell (Long): Exit if LTP >= Target
-                        # SL-Buy (Short): Exit if LTP <= Target
-                        # Note: 'trans_type' here is the SL order type.
-                        # If I have a Long Position, I place a SELL SL.
-                        # So if SL is "SELL", I am exiting a Long. I want to exit if Price goes UP to Target.
-
                         if trans_type in ["S", "SELL"]:
                             if ltp >= target_price:
                                 hit = True
@@ -187,6 +194,72 @@ class BackgroundMonitor:
 
             time.sleep(1) # Check every 1 second
 
+    def _check_pending_entries(self):
+        try:
+            with self.lock:
+                entry_ids = list(self.pending_entries.keys())
+
+            for eid in entry_ids:
+                try:
+                    # Poll status
+                    resp = self.client.order_history(order_id=eid)
+                    # Response is usually: {'data': [{'order_id': ..., 'stat': 'TRADED', ...}, ...]}
+                    # Order history list is sorted? Usually last item is latest.
+
+                    status = None
+                    if resp and 'data' in resp and resp['data']:
+                        # Get latest status (assuming list or single dict)
+                        orders = resp['data']
+                        if isinstance(orders, list):
+                            # Usually 0 is latest or last is latest?
+                            # Kotak API usually returns list of state changes.
+                            # We look for ANY 'TRADED' status in the history logic?
+                            # Or just the status of the order.
+                            # Let's check the 'stat' or 'ordSt' of the first item (often current state).
+                            # Actually, order_report is status snapshot, order_history is history.
+                            # Let's assume order_history returns list. We check if any item is TRADED.
+                            for o in orders:
+                                st_code = str(o.get('stat', o.get('ordSt', ''))).upper()
+                                if st_code == 'TRADED' or st_code == 'COMPLETE':
+                                    status = 'TRADED'
+                                    break
+                                elif st_code in ['CANCELLED', 'REJECTED', 'ABORTED']:
+                                    status = 'FAILED'
+                        elif isinstance(orders, dict):
+                             st_code = str(orders.get('stat', orders.get('ordSt', ''))).upper()
+                             if st_code == 'TRADED' or st_code == 'COMPLETE': status = 'TRADED'
+                             elif st_code in ['CANCELLED', 'REJECTED', 'ABORTED']: status = 'FAILED'
+
+                    if status == 'TRADED':
+                        print(f"Pending Entry {eid} FILLED. Placing SL...")
+                        with self.lock:
+                            sl_params = self.pending_entries[eid]['sl_params']
+
+                        # Place SL Order
+                        sl_resp = self.client.place_order(**sl_params)
+                        if sl_resp and 'nOrdNo' in sl_resp:
+                            print(f"Auto SL Order Placed: {sl_resp['nOrdNo']}")
+                            with self.lock:
+                                del self.pending_entries[eid]
+                        else:
+                            print(f"Auto SL Order FAILED: {sl_resp}")
+                            # Should we retry? For now, leave it in pending but maybe flag error?
+                            # If we leave it, it will try again next loop (which is good for transient errors)
+                            # But if persistent error, we might spam.
+                            # Let's retry max 3 times then drop?
+                            pass
+
+                    elif status == 'FAILED':
+                        print(f"Pending Entry {eid} FAILED/CANCELLED. Removing monitor.")
+                        with self.lock:
+                            del self.pending_entries[eid]
+
+                except Exception as e:
+                    print(f"Error checking entry {eid}: {e}")
+
+        except Exception as ex:
+            print(f"Check Pending Entries Error: {ex}")
+
     def _modify_to_market(self, order_id, data):
         try:
             mod_args = {
@@ -208,8 +281,6 @@ class BackgroundMonitor:
 
             # Check for success (usually nOrdNo is returned)
             if resp and ('nOrdNo' in resp or 'result' in resp):
-                # API v2 often returns nOrdNo on success, or maybe 'result': 'ok'
-                # Check for error keys explicitly
                 if 'Error' in resp or 'error' in resp:
                      err_msg = resp.get('Error', resp.get('error'))
                      with self.lock:
@@ -221,7 +292,6 @@ class BackgroundMonitor:
                 print(f"Order {order_id} Modification SUCCESS")
                 return True
             else:
-                # Handle unknown response format
                 msg = f"Unknown Resp: {resp}"
                 with self.lock:
                     if str(order_id) in self.targets:

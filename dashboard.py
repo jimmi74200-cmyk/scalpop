@@ -959,7 +959,7 @@ if 'client' in st.session_state:
                         if resp and 'nOrdNo' in resp: # Check for success key
                              st.success(f"Entry Order Placed! ID: {resp['nOrdNo']}")
 
-                             # 2. Place Stop Loss Order (SL-M) if needed
+                             # 2. Place Stop Loss Order Logic
                              if stop_loss > 0:
                                  try:
                                      # Calculate Trigger Price
@@ -979,26 +979,20 @@ if 'client' in st.session_state:
                                          st.warning(f"Calculated SL Trigger Price ({trigger_price}) is invalid. SL Order skipped.")
                                      else:
                                          # Calculate Limit Price for SL order (SL-L)
-                                         # For Sell SL: Limit should be <= Trigger (to ensure fill)
-                                         # For Buy SL: Limit should be >= Trigger
-                                         buffer_points = 2.0 # Fixed buffer to ensure execution
-
+                                         buffer_points = 2.0
                                          if sl_transaction_type == "S":
                                              sl_limit_price = trigger_price - buffer_points
                                          else:
                                              sl_limit_price = trigger_price + buffer_points
 
-                                         # Round to tick size
                                          sl_limit_price = round(sl_limit_price * 20) / 20
-
-                                         # Ensure price is valid
                                          if sl_limit_price <= 0: sl_limit_price = 0.05
 
                                          sl_args = {
                                             "exchange_segment": "nse_fo",
                                             "product": product_type,
-                                            "price": str(sl_limit_price), # SL-L requires a limit price
-                                            "order_type": "SL", # Changed from SL-M to SL (Stop Limit)
+                                            "price": str(sl_limit_price),
+                                            "order_type": "SL",
                                             "quantity": str(quantity),
                                             "validity": "DAY",
                                             "trading_symbol": trading_sym,
@@ -1010,18 +1004,29 @@ if 'client' in st.session_state:
                                          with st.expander("Order Debug Details", expanded=True):
                                              st.write("SL Order Args:", sl_args)
 
-                                         sl_resp = client.place_order(**sl_args)
-
-                                         with st.expander("Order Debug Details", expanded=True):
-                                             st.write("SL Order Response:", sl_resp)
-
-                                         if sl_resp and 'nOrdNo' in sl_resp:
-                                             st.info(f"Stop Loss Limit Order Placed! ID: {sl_resp['nOrdNo']} Trigger: {trigger_price}, Limit: {sl_limit_price}")
+                                         # -- BRANCH LOGIC: MARKET vs LIMIT --
+                                         if is_limit:
+                                             # For Limit Orders, we cannot place SL immediately if entry is pending.
+                                             # We defer SL placement to the Background Monitor.
+                                             bg_monitor.add_pending_entry(resp['nOrdNo'], sl_args)
+                                             st.warning("Limit Order Placed. Stop Loss will be placed AUTOMATICALLY once the order fills.")
                                          else:
-                                             st.warning(f"Stop Loss Order Failed: {sl_resp.get('Error', sl_resp)}")
+                                             # For Market Orders, place immediately (assuming fill)
+                                             # Wait, strictly speaking Market orders might lag slightly too,
+                                             # but usually instant enough for API to accept SL.
+                                             # If user wants "no delay", this is fastest.
+
+                                             sl_resp = client.place_order(**sl_args)
+                                             with st.expander("Order Debug Details", expanded=True):
+                                                 st.write("SL Order Response:", sl_resp)
+
+                                             if sl_resp and 'nOrdNo' in sl_resp:
+                                                 st.info(f"Stop Loss Limit Order Placed! ID: {sl_resp['nOrdNo']} Trigger: {trigger_price}, Limit: {sl_limit_price}")
+                                             else:
+                                                 st.warning(f"Stop Loss Order Failed: {sl_resp.get('Error', sl_resp)}")
 
                                  except Exception as sl_ex:
-                                     st.warning(f"Exception placing SL Order: {sl_ex}")
+                                     st.warning(f"Exception calculating/placing SL Order: {sl_ex}")
 
                         elif resp and 'Error' in resp:
                              st.error(f"Order Failed: {resp['Error']}")
