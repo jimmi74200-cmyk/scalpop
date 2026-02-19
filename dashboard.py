@@ -756,6 +756,15 @@ if 'client' in st.session_state:
                                 st.write(f"Token: {ce_token}, Seg: {ce_seg}")
                                 st.write(e)
                     st.metric("CE LTP", ce_ltp)
+                    # Debug: Show Token and Trading Symbol for verification
+                    if ce_token:
+                        # Find trading symbol in df_indices
+                        try:
+                            ce_row = df_indices[df_indices['instrument_token'] == str(ce_token)].iloc[0]
+                            ce_tsym = ce_row.get('trading_symbol', 'Unknown')
+                            st.caption(f"{ce_tsym} ({ce_token})")
+                        except:
+                            st.caption(f"Token: {ce_token}")
 
                 with col4:
                     # Determine current PE target
@@ -803,6 +812,15 @@ if 'client' in st.session_state:
                                 st.write(f"Token: {pe_token}, Seg: {pe_seg}")
                                 st.write(e)
                     st.metric("PE LTP", pe_ltp)
+                    # Debug: Show Token and Trading Symbol for verification
+                    if pe_token:
+                        # Find trading symbol in df_indices
+                        try:
+                            pe_row = df_indices[df_indices['instrument_token'] == str(pe_token)].iloc[0]
+                            pe_tsym = pe_row.get('trading_symbol', 'Unknown')
+                            st.caption(f"{pe_tsym} ({pe_token})")
+                        except:
+                            st.caption(f"Token: {pe_token}")
 
                 with col5:
                     stop_loss = st.number_input("Stop Loss Points", min_value=0.0, step=0.5, value=10.0)
