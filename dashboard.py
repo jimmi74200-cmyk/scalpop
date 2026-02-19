@@ -701,6 +701,28 @@ if 'client' in st.session_state:
                     except Exception as ex:
                         pass # Ignore if something goes wrong during callback
 
+                # Limit Price Adjustment Helpers
+                def adjust_limit_price(key, delta):
+                    curr = st.session_state.get(key, 0.0)
+                    new_val = round(float(curr) + delta, 2)
+                    if new_val < 0: new_val = 0.05
+                    st.session_state[key] = new_val
+
+                def refresh_limit_price(key, token, segment="nse_fo"):
+                    try:
+                        if token:
+                            q = st.session_state['client'].quotes(instrument_tokens=[{"instrument_token": str(token), "exchange_segment": segment}], quote_type="ltp")
+                            val = extract_ltp(q)
+                            if val and val != "N/A" and val != "Err":
+                                st.session_state[key] = float(val)
+                    except:
+                        pass
+
+                with col5:
+                    limit_order_active = st.checkbox("Limit Order", value=False, help="Enable to place Limit orders instead of Market orders. Allows adjusting price.")
+                    stop_loss = st.number_input("Stop Loss Points", min_value=0.0, step=0.5, value=10.0)
+                    quantity = st.number_input("Quantity", min_value=1, step=1, value=50) # Default lot size?
+
                 with col3:
                     # Determine current CE target
                     # Priority: Saved Shadow State -> Auto Select -> Default Middle
@@ -742,11 +764,21 @@ if 'client' in st.session_state:
                     ce_token, ce_seg = get_token_and_segment(df_indices, symbol, expiry, ce_strike, "CE")
                     ce_ltp = "Loading..."
 
+                    # Init Limit Price State if needed
+                    if 'ce_limit_price' not in st.session_state:
+                        st.session_state['ce_limit_price'] = 0.0
+
                     if ce_token:
                         try:
                             seg = ce_seg if ce_seg else "nse_fo"
                             q = client.quotes(instrument_tokens=[{"instrument_token": ce_token, "exchange_segment": seg}], quote_type="ltp")
                             ce_ltp = extract_ltp(q)
+
+                            # Auto-update limit price if it's 0 (first load)
+                            if st.session_state['ce_limit_price'] == 0.0 and ce_ltp not in ["Loading...", "Err", "N/A"]:
+                                try:
+                                    st.session_state['ce_limit_price'] = float(ce_ltp)
+                                except: pass
 
                         except Exception as e:
                             ce_ltp = "Err"
@@ -755,7 +787,21 @@ if 'client' in st.session_state:
                             if st.checkbox("Show CE Error", key="ce_err"):
                                 st.write(f"Token: {ce_token}, Seg: {ce_seg}")
                                 st.write(e)
-                    st.metric("CE LTP", ce_ltp)
+
+                    if limit_order_active:
+                        # Render Limit UI
+                        l1, l2, l3, l4 = st.columns([3, 1, 1, 1])
+                        with l1:
+                            st.number_input("Limit Price", key="ce_limit_price", label_visibility="collapsed", step=0.05, format="%.2f")
+                        with l2:
+                            st.button("−", key="ce_lim_minus", on_click=adjust_limit_price, args=('ce_limit_price', -0.05), use_container_width=True)
+                        with l3:
+                            st.button("+", key="ce_lim_plus", on_click=adjust_limit_price, args=('ce_limit_price', 0.05), use_container_width=True)
+                        with l4:
+                            st.button("↻", key="ce_lim_refresh", on_click=refresh_limit_price, args=('ce_limit_price', ce_token, ce_seg), help="Refresh Limit Price from LTP", use_container_width=True)
+                    else:
+                        st.metric("CE LTP", ce_ltp)
+
                     # Debug: Show Token and Trading Symbol for verification
                     if ce_token:
                         # Find trading symbol in df_indices
@@ -800,18 +846,41 @@ if 'client' in st.session_state:
                     pe_token, pe_seg = get_token_and_segment(df_indices, symbol, expiry, pe_strike, "PE")
                     pe_ltp = "Loading..."
 
+                    # Init Limit Price State if needed
+                    if 'pe_limit_price' not in st.session_state:
+                        st.session_state['pe_limit_price'] = 0.0
+
                     if pe_token:
                         try:
                             seg = pe_seg if pe_seg else "nse_fo"
                             q = client.quotes(instrument_tokens=[{"instrument_token": pe_token, "exchange_segment": seg}], quote_type="ltp")
                             pe_ltp = extract_ltp(q)
 
+                            if st.session_state['pe_limit_price'] == 0.0 and pe_ltp not in ["Loading...", "Err", "N/A"]:
+                                try:
+                                    st.session_state['pe_limit_price'] = float(pe_ltp)
+                                except: pass
+
                         except Exception as e:
                             pe_ltp = "Err"
                             if st.checkbox("Show PE Error", key="pe_err"):
                                 st.write(f"Token: {pe_token}, Seg: {pe_seg}")
                                 st.write(e)
-                    st.metric("PE LTP", pe_ltp)
+
+                    if limit_order_active:
+                        # Render Limit UI
+                        l1, l2, l3, l4 = st.columns([3, 1, 1, 1])
+                        with l1:
+                            st.number_input("Limit Price", key="pe_limit_price", label_visibility="collapsed", step=0.05, format="%.2f")
+                        with l2:
+                            st.button("−", key="pe_lim_minus", on_click=adjust_limit_price, args=('pe_limit_price', -0.05), use_container_width=True)
+                        with l3:
+                            st.button("+", key="pe_lim_plus", on_click=adjust_limit_price, args=('pe_limit_price', 0.05), use_container_width=True)
+                        with l4:
+                            st.button("↻", key="pe_lim_refresh", on_click=refresh_limit_price, args=('pe_limit_price', pe_token, pe_seg), help="Refresh Limit Price from LTP", use_container_width=True)
+                    else:
+                        st.metric("PE LTP", pe_ltp)
+
                     # Debug: Show Token and Trading Symbol for verification
                     if pe_token:
                         # Find trading symbol in df_indices
@@ -822,41 +891,45 @@ if 'client' in st.session_state:
                         except:
                             st.caption(f"Token: {pe_token}")
 
-                with col5:
-                    stop_loss = st.number_input("Stop Loss Points", min_value=0.0, step=0.5, value=10.0)
-                    quantity = st.number_input("Quantity", min_value=1, step=1, value=50) # Default lot size?
-
                 # Buttons Row
                 st.markdown("---")
                 b_col1, b_col2, b_col3, b_col4 = st.columns(4)
 
-                def place_dashboard_order(transaction_type, option_type, strike, token, quantity, stop_loss, ltp_ref):
+                def place_dashboard_order(transaction_type, option_type, strike, token, quantity, stop_loss, ltp_ref, is_limit=False, limit_price=0.0):
                     if not token:
                         st.error("Invalid Instrument Token")
                         return
 
-                    # 0. FETCH FRESH LTP (Ensure SL is accurate)
-                    # User reported issues with "old ltp" causing bad SL placement.
-                    # We always fetch fresh quote here to guarantee accuracy.
+                    # 0. DETERMINE ENTRY PRICE & VALIDATE
                     current_price = 0.0
-                    try:
-                        fresh_q = client.quotes(instrument_tokens=[{"instrument_token": str(token), "exchange_segment": "nse_fo"}], quote_type="ltp")
-                        extracted_ltp = extract_ltp(fresh_q)
-                        current_price = float(extracted_ltp)
-                        # st.toast(f"Fresh LTP: {current_price}") # Optional debug
-                    except Exception as fetch_e:
-                        st.warning(f"Fresh Quote Fetch Failed: {fetch_e}. Falling back to Dashboard LTP.")
-                        # Fallback to passed reference
+
+                    if is_limit:
+                        if limit_price <= 0:
+                            st.error("Invalid Limit Price. Order ABORTED.")
+                            return
+                        current_price = limit_price
+                        # We use the limit price as the 'current_price' baseline for SL calculation
+                    else:
+                        # Market Order: Must fetch fresh LTP
                         try:
-                            current_price = float(ltp_ref)
-                        except:
-                            current_price = 0.0
+                            fresh_q = client.quotes(instrument_tokens=[{"instrument_token": str(token), "exchange_segment": "nse_fo"}], quote_type="ltp")
+                            extracted_ltp = extract_ltp(fresh_q)
+                            current_price = float(extracted_ltp)
+                        except Exception as fetch_e:
+                            st.warning(f"Fresh Quote Fetch Failed: {fetch_e}. Falling back to Dashboard LTP.")
+                            try:
+                                current_price = float(ltp_ref)
+                            except:
+                                current_price = 0.0
 
-                    if current_price <= 0:
-                        st.error("Invalid Price for Stop Loss. Order ABORTED.")
-                        return
+                        if current_price <= 0:
+                            st.error("Invalid Price for Stop Loss. Order ABORTED.")
+                            return
 
-                    st.toast(f"Placing {transaction_type} order for {symbol} {expiry} {strike} {option_type}...")
+                    order_type_str = "LIMIT" if is_limit else "MARKET"
+                    price_str = str(limit_price) if is_limit else "0"
+
+                    st.toast(f"Placing {order_type_str} {transaction_type} order for {symbol} {expiry} {strike} {option_type}...")
 
                     product_type = "MIS"
 
@@ -874,12 +947,12 @@ if 'client' in st.session_state:
 
                         trading_sym = subset['trading_symbol'].values[0]
 
-                        # 1. Place Entry Order (Market)
+                        # 1. Place Entry Order
                         order_args = {
                             "exchange_segment": "nse_fo",
                             "product": product_type,
-                            "price": "0", # Market order
-                            "order_type": "MKT",
+                            "price": price_str,
+                            "order_type": "L" if is_limit else "MKT",
                             "quantity": str(quantity),
                             "validity": "DAY",
                             "trading_symbol": trading_sym,
@@ -903,8 +976,6 @@ if 'client' in st.session_state:
                              # 2. Place Stop Loss Order (SL-M) if needed
                              if stop_loss > 0:
                                  try:
-                                     # Use the validated current_price from Step 0
-
                                      # Calculate Trigger Price
                                      if transaction_type == "BUY":
                                          # Long Entry -> SL is Sell below Entry
@@ -976,16 +1047,16 @@ if 'client' in st.session_state:
 
                 with b_col1:
                     if st.button("BUY CALL", use_container_width=True, type="primary"):
-                        place_dashboard_order("BUY", "CE", ce_strike, ce_token, quantity, stop_loss, ce_ltp)
+                        place_dashboard_order("BUY", "CE", ce_strike, ce_token, quantity, stop_loss, ce_ltp, limit_order_active, st.session_state.get('ce_limit_price', 0.0))
                 with b_col2:
                     if st.button("SELL CALL", use_container_width=True):
-                        place_dashboard_order("SELL", "CE", ce_strike, ce_token, quantity, stop_loss, ce_ltp)
+                        place_dashboard_order("SELL", "CE", ce_strike, ce_token, quantity, stop_loss, ce_ltp, limit_order_active, st.session_state.get('ce_limit_price', 0.0))
                 with b_col3:
                     if st.button("BUY PUT", use_container_width=True, type="primary"):
-                        place_dashboard_order("BUY", "PE", pe_strike, pe_token, quantity, stop_loss, pe_ltp)
+                        place_dashboard_order("BUY", "PE", pe_strike, pe_token, quantity, stop_loss, pe_ltp, limit_order_active, st.session_state.get('pe_limit_price', 0.0))
                 with b_col4:
                     if st.button("SELL PUT", use_container_width=True):
-                        place_dashboard_order("SELL", "PE", pe_strike, pe_token, quantity, stop_loss, pe_ltp)
+                        place_dashboard_order("SELL", "PE", pe_strike, pe_token, quantity, stop_loss, pe_ltp, limit_order_active, st.session_state.get('pe_limit_price', 0.0))
 
         except Exception as e:
             st.error(f"Error processing data: {e}")
